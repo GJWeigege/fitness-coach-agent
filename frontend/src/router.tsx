@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "./contexts/AuthContext";
+import { useAuth, usePermissions } from "./contexts/AuthContext";
 import { MainLayout } from "./layouts/MainLayout";
 import { AgentRunsPage } from "./pages/AgentRunsPage";
 import { AuthPage } from "./pages/AuthPage";
@@ -47,6 +47,55 @@ function GuestRoute({ children }: { children: ReactNode }) {
   return children;
 }
 
+function PermissionRoute({
+  allowed,
+  children,
+}: {
+  allowed: boolean;
+  children: ReactNode;
+}) {
+  if (!allowed) {
+    return <Navigate to="/chat" replace />;
+  }
+  return children;
+}
+
+function KnowledgeRoute() {
+  const { canViewKnowledge } = usePermissions();
+  return (
+    <PermissionRoute allowed={canViewKnowledge}>
+      <KnowledgePage />
+    </PermissionRoute>
+  );
+}
+
+function AgentRunsRoute() {
+  const { canViewObservability } = usePermissions();
+  return (
+    <PermissionRoute allowed={canViewObservability}>
+      <AgentRunsPage />
+    </PermissionRoute>
+  );
+}
+
+function BenchmarkRoute() {
+  const { canReadBenchmark, canRunBenchmark } = usePermissions();
+  return (
+    <PermissionRoute allowed={canReadBenchmark || canRunBenchmark}>
+      <BenchmarkDashboardPage />
+    </PermissionRoute>
+  );
+}
+
+function UsersRoute() {
+  const { canManageUsers } = usePermissions();
+  return (
+    <PermissionRoute allowed={canManageUsers}>
+      <UsersPage />
+    </PermissionRoute>
+  );
+}
+
 export const router = createBrowserRouter([
   {
     path: "/auth",
@@ -66,10 +115,10 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/chat" replace /> },
           { path: "chat", element: <ChatPage /> },
           { path: "profile", element: <ProfilePage /> },
-          { path: "knowledge", element: <KnowledgePage /> },
-          { path: "agent-runs", element: <AgentRunsPage /> },
-          { path: "benchmark", element: <BenchmarkDashboardPage /> },
-          { path: "users", element: <UsersPage /> },
+          { path: "knowledge", element: <KnowledgeRoute /> },
+          { path: "agent-runs", element: <AgentRunsRoute /> },
+          { path: "benchmark", element: <BenchmarkRoute /> },
+          { path: "users", element: <UsersRoute /> },
         ],
       },
     ],
