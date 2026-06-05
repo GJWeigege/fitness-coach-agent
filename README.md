@@ -105,3 +105,9 @@ k6 run scripts/load/chat_stream.js -e BASE_URL=http://localhost:8000 -e TOKEN=<j
 - **Observability**: agent run timeline, metrics summary
 
 No handoff / ticket / customer-service modules in this repo.
+
+---
+
+## 附录：简历项目描述（≤200 字）
+
+LangGraph 多运动健康 Coach：并行 training/nutrition 子 Agent、Planning+CoT、RAG/Graph RAG 与 7 工具；FastAPI+pgvector+React SSE；含 benchmark 评测、观测与 LoRA 实验脚本。默认 DashScope API，LoRA 仅本地可选。
