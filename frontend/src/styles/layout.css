@@ -68,27 +68,6 @@
   color: var(--color-text-secondary);
 }
 
-.auth-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: var(--space-2xl);
-}
-
-.auth-page__card {
-  width: min(420px, 100%);
-  padding: var(--space-2xl);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sidebar);
-}
-
-.auth-page__card h1 {
-  font-size: 22px;
-  margin-bottom: var(--space-sm);
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;

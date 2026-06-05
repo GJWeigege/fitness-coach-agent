@@ -18,6 +18,9 @@
   --color-text-inverse: #f8fafc;
   --color-text-sidebar: #cbd5e1;
 
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+
   --shadow-sidebar: 4px 0 24px rgba(15, 23, 42, 0.06);
 
   --radius-md: 10px;
