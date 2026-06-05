@@ -8,6 +8,7 @@ class KnowledgeUploadResponse(BaseModel):
     document_id: uuid.UUID
     chunks: int
     title: str
+    status: str = "indexed"
 
 
 class KnowledgeDocumentItem(BaseModel):

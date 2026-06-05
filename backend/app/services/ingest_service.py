@@ -18,6 +18,35 @@ class IngestService:
         self.chunk_size = settings.ingest_chunk_size
         self.chunk_overlap = settings.ingest_chunk_overlap
 
+    async def ingest_pending_document(
+        self, db: AsyncSession, document_id: UUID, file_path: Path
+    ) -> tuple[KnowledgeDocument, int]:
+        doc = await db.get(KnowledgeDocument, document_id)
+        if doc is None:
+            raise ValueError("文档不存在。")
+
+        text = self._extract_text(file_path)
+        chunks = self._split_text(text)
+        if not chunks:
+            raise ValueError("文档内容为空，无法建立索引。")
+
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        doc.content_hash = content_hash
+        doc.status = "indexed"
+
+        embeddings = await self.llm_client.embedding(chunks)
+        for idx, chunk_text in enumerate(chunks):
+            db.add(
+                KnowledgeChunk(
+                    document_id=doc.id,
+                    chunk_index=idx,
+                    content=chunk_text,
+                    embedding=embeddings[idx],
+                )
+            )
+        await db.flush()
+        return doc, len(chunks)
+
     async def ingest_file(
         self, db: AsyncSession, file_path: Path, title: str | None = None
     ) -> tuple[KnowledgeDocument, int]:

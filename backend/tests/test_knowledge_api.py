@@ -3,9 +3,11 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.core.rate_limit import RateLimitRule
+from tests.conftest import TEST_DATABASE_URL
 from tests.test_auth import auth_headers, bootstrap_admin
 
 EMBED_DIM = get_settings().embedding_dim
@@ -37,9 +39,13 @@ async def create_kb_editor(client: AsyncClient) -> dict:
 
 
 @pytest.fixture
-def mock_dashscope_client():
+def mock_dashscope_client(monkeypatch):
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr("app.api.knowledge.AsyncSessionLocal", session_factory)
     with patch("app.api.knowledge.DashScopeClient", MockDashScopeClient):
         yield
+    engine.sync_engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -71,17 +77,17 @@ async def test_upload_and_list_document(client: AsyncClient, mock_dashscope_clie
     content = "\n".join([f"训练建议段落{i} " + ("z" * 80) for i in range(1, 4)])
     files = {"file": ("coach-tips.md", content.encode("utf-8"), "text/markdown")}
     upload = await client.post("/knowledge/upload", headers=headers, files=files)
-    assert upload.status_code == 200, upload.text
+    assert upload.status_code == 202, upload.text
     body = upload.json()
     assert body["title"] == "coach-tips.md"
-    assert body["chunks"] >= 1
+    assert body["status"] == "pending"
 
     listed = await client.get("/knowledge/documents", headers=headers)
     assert listed.status_code == 200
     docs = listed.json()["documents"]
     assert len(docs) == 1
     assert docs[0]["id"] == body["document_id"]
-    assert docs[0]["chunk_count"] == body["chunks"]
+    assert docs[0]["chunk_count"] >= 1
     assert docs[0]["status"] == "indexed"
 
 
@@ -124,13 +130,19 @@ async def test_reindex_document(client: AsyncClient, mock_dashscope_client, tmp_
         headers=headers,
         files={"file": ("reindex.md", content.encode("utf-8"), "text/markdown")},
     )
-    assert upload.status_code == 200
+    assert upload.status_code == 202
     doc_id = upload.json()["document_id"]
 
     reindex = await client.post(f"/knowledge/documents/{doc_id}/reindex", headers=headers)
-    assert reindex.status_code == 200
+    assert reindex.status_code == 202
     assert reindex.json()["document_id"] == doc_id
-    assert reindex.json()["chunks"] >= 1
+    assert reindex.json()["status"] == "reindexing"
+
+    listed = await client.get("/knowledge/documents", headers=headers)
+    assert listed.status_code == 200
+    doc = next(item for item in listed.json()["documents"] if item["id"] == doc_id)
+    assert doc["status"] == "indexed"
+    assert doc["chunk_count"] >= 1
 
 
 @pytest.mark.asyncio
@@ -144,7 +156,7 @@ async def test_reindex_requires_knowledge_reindex(client: AsyncClient, mock_dash
         headers=admin_headers,
         files={"file": ("admin-doc.md", b"content", "text/markdown")},
     )
-    assert upload.status_code == 200
+    assert upload.status_code == 202
     doc_id = upload.json()["document_id"]
 
     writer = await client.post(
@@ -185,8 +197,8 @@ async def test_upload_rate_limit(client: AsyncClient, mock_dashscope_client, tmp
         first = await client.post("/knowledge/upload", headers=headers, files=files)
         second = await client.post("/knowledge/upload", headers=headers, files=files)
         third = await client.post("/knowledge/upload", headers=headers, files=files)
-    assert first.status_code == 200
-    assert second.status_code == 200
+    assert first.status_code == 202
+    assert second.status_code == 202
     assert third.status_code == 429
 
 
@@ -202,7 +214,7 @@ async def test_reindex_rate_limit(client: AsyncClient, mock_dashscope_client, tm
             headers=headers,
             files={"file": ("reindex-rate.md", b"content for reindex", "text/markdown")},
         )
-    assert upload.status_code == 200
+    assert upload.status_code == 202
     doc_id = upload.json()["document_id"]
     tight_limit = RateLimitRule(max_requests=2, window_seconds=60)
 
@@ -213,6 +225,6 @@ async def test_reindex_rate_limit(client: AsyncClient, mock_dashscope_client, tm
         first = await client.post(f"/knowledge/documents/{doc_id}/reindex", headers=headers)
         second = await client.post(f"/knowledge/documents/{doc_id}/reindex", headers=headers)
         third = await client.post(f"/knowledge/documents/{doc_id}/reindex", headers=headers)
-    assert first.status_code == 200
-    assert second.status_code == 200
+    assert first.status_code == 202
+    assert second.status_code == 202
     assert third.status_code == 429

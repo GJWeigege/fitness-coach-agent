@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.core.deps import get_db, require_permissions
 from app.core.errors import PUBLIC_ERROR_MESSAGE
 from app.core.rate_limit import REINDEX_RATE, UPLOAD_RATE, enforce_rate_limit, enforce_user_rate_limit
 from app.db.models import KnowledgeChunk, KnowledgeDocument, User
+from app.db.session import AsyncSessionLocal
 from app.llm.dashscope_client import DashScopeClient
 from app.schemas.knowledge import KnowledgeDocumentItem, KnowledgeDocumentListResponse, KnowledgeUploadResponse
 from app.services.ingest_service import IngestService
@@ -19,9 +20,42 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 logger = logging.getLogger(__name__)
 
 
-@router.post("/upload", response_model=KnowledgeUploadResponse)
+async def _ingest_upload_background(document_id: UUID, file_path: Path) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            service = IngestService(llm_client=DashScopeClient())
+            await service.ingest_pending_document(db, document_id, file_path)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("knowledge_upload_background_failed doc=%s", document_id)
+            async with AsyncSessionLocal() as fail_db:
+                doc = await fail_db.get(KnowledgeDocument, document_id)
+                if doc is not None:
+                    doc.status = "failed"
+                    await fail_db.commit()
+
+
+async def _reindex_background(document_id: UUID) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            service = IngestService(llm_client=DashScopeClient())
+            await service.reindex_document(db, document_id=document_id)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("knowledge_reindex_background_failed doc=%s", document_id)
+            async with AsyncSessionLocal() as fail_db:
+                doc = await fail_db.get(KnowledgeDocument, document_id)
+                if doc is not None:
+                    doc.status = "failed"
+                    await fail_db.commit()
+
+
+@router.post("/upload", status_code=202, response_model=KnowledgeUploadResponse)
 async def upload_knowledge(
     http_request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permissions("knowledge:write")),
@@ -46,19 +80,17 @@ async def upload_knowledge(
         )
     target.write_bytes(payload)
 
-    try:
-        service = IngestService(llm_client=DashScopeClient())
-    except ValueError as exc:
-        logger.exception("ingest_client_init_failed")
-        raise HTTPException(status_code=500, detail=PUBLIC_ERROR_MESSAGE) from exc
-    try:
-        doc, chunk_count = await service.ingest_file(db=db, file_path=target, title=file.filename)
-    except ValueError as exc:
-        logger.warning("knowledge_upload_rejected: %s", exc)
-        raise HTTPException(status_code=400, detail="文件内容无法处理，请检查格式后重试。") from exc
-
+    doc = KnowledgeDocument(
+        title=file.filename or target.name,
+        source_path=str(target),
+        content_hash="",
+        status="pending",
+    )
+    db.add(doc)
     await db.commit()
-    return KnowledgeUploadResponse(document_id=doc.id, chunks=chunk_count, title=doc.title)
+
+    background_tasks.add_task(_ingest_upload_background, doc.id, target)
+    return KnowledgeUploadResponse(document_id=doc.id, chunks=0, title=doc.title, status=doc.status)
 
 
 @router.get("/documents", response_model=KnowledgeDocumentListResponse)
@@ -95,24 +127,26 @@ async def list_documents(
     )
 
 
-@router.post("/documents/{document_id}/reindex", response_model=KnowledgeUploadResponse)
+@router.post("/documents/{document_id}/reindex", status_code=202, response_model=KnowledgeUploadResponse)
 async def reindex_document(
     document_id: UUID,
     http_request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permissions("knowledge:reindex")),
 ) -> KnowledgeUploadResponse:
     enforce_rate_limit(http_request, REINDEX_RATE, scope="knowledge_reindex")
     enforce_user_rate_limit(str(user.id), REINDEX_RATE, scope="knowledge_reindex")
-    try:
-        service = IngestService(llm_client=DashScopeClient())
-    except ValueError as exc:
-        logger.exception("reindex_client_init_failed")
-        raise HTTPException(status_code=500, detail=PUBLIC_ERROR_MESSAGE) from exc
-    try:
-        doc, count = await service.reindex_document(db=db, document_id=document_id)
-    except ValueError as exc:
-        logger.warning("knowledge_reindex_rejected doc=%s: %s", document_id, exc)
-        raise HTTPException(status_code=400, detail="文档无法重新索引，请确认文件仍存在且格式有效。") from exc
+
+    doc = await db.get(KnowledgeDocument, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在。")
+    source_path = Path(doc.source_path)
+    if not source_path.exists():
+        raise HTTPException(status_code=400, detail="源文件不存在，无法重建索引。")
+
+    doc.status = "reindexing"
     await db.commit()
-    return KnowledgeUploadResponse(document_id=doc.id, chunks=count, title=doc.title)
+
+    background_tasks.add_task(_reindex_background, document_id)
+    return KnowledgeUploadResponse(document_id=doc.id, chunks=0, title=doc.title, status=doc.status)
