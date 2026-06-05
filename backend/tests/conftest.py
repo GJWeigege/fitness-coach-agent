@@ -2,6 +2,7 @@
 #   CREATE DATABASE fitness_coach_test;
 # (PostgreSQL does not auto-create it; use the same host/credentials as TEST_DATABASE_URL.)
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -9,10 +10,21 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.db.models  # noqa: F401 — register all ORM tables on Base.metadata
 from app.core.deps import get_db
+from app.core.login_lockout import login_lockout
+from app.core.rate_limit import reset_rate_limiter_for_tests
 from app.db.models import Base
 from app.main import app
 
 TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/fitness_coach_test"
+
+
+@pytest.fixture(autouse=True)
+def reset_auth_guards():
+    reset_rate_limiter_for_tests()
+    login_lockout.reset_for_tests()
+    yield
+    reset_rate_limiter_for_tests()
+    login_lockout.reset_for_tests()
 
 
 @pytest_asyncio.fixture

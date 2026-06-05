@@ -79,6 +79,7 @@ _settings = get_settings()
 limiter = RateLimiter(max_keys=_settings.rate_limit_max_keys)
 
 LOGIN_RATE = RateLimitRule(max_requests=10, window_seconds=60)
+REGISTER_RATE = RateLimitRule(max_requests=5, window_seconds=3600)
 BOOTSTRAP_RATE = RateLimitRule(max_requests=3, window_seconds=3600)
 STREAM_RATE = RateLimitRule(max_requests=30, window_seconds=60)
 UPLOAD_RATE = RateLimitRule(max_requests=10, window_seconds=3600)
@@ -91,3 +92,8 @@ def enforce_rate_limit(request: Request, rule: RateLimitRule, *, scope: str) -> 
 
 def enforce_user_rate_limit(user_id: str, rule: RateLimitRule, *, scope: str) -> None:
     limiter.check(f"{scope}:user:{user_id}", rule)
+
+
+def reset_rate_limiter_for_tests() -> None:
+    with limiter._lock:
+        limiter._hits.clear()

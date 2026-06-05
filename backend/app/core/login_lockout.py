@@ -53,5 +53,9 @@ class LoginLockout:
         with self._lock:
             self._failures.pop(key, None)
 
+    def reset_for_tests(self) -> None:
+        with self._lock:
+            self._failures.clear()
+
 
 login_lockout = LoginLockout()
