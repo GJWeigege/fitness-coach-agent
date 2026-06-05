@@ -5,6 +5,7 @@ import type { UserProfile } from "../types";
 type AuthContextValue = {
   token: string;
   me: UserProfile | null;
+  permissions: Set<string>;
   authError: string;
   setAuthError: (msg: string) => void;
   loginUser: (username: string, password: string) => Promise<void>;
@@ -63,11 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError("");
   }
 
+  const permissions = new Set(me?.permissions ?? []);
+
   return (
     <AuthContext.Provider
       value={{
         token,
         me,
+        permissions,
         authError,
         setAuthError,
         loginUser,
@@ -85,4 +89,18 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+export function usePermissions() {
+  const { permissions } = useAuth();
+  return {
+    canSendChat: permissions.has("chat:send"),
+    canViewKnowledge: permissions.has("knowledge:read"),
+    canManageKnowledge: permissions.has("knowledge:write"),
+    canReindexKnowledge: permissions.has("knowledge:reindex"),
+    canManageUsers: permissions.has("user:manage"),
+    canViewObservability: permissions.has("observability:read"),
+    canRunBenchmark: permissions.has("benchmark:run"),
+    canReadBenchmark: permissions.has("benchmark:read"),
+  };
 }
