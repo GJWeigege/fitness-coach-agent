@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,14 +8,25 @@ from app.api.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.middleware import SecurityHeadersMiddleware, TraceMiddleware
+from app.db.seed_users import seed_demo_users
+from app.db.session import AsyncSessionLocal
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.validate_auth_secret_for_env()
     settings.validate_cors_origins_for_env()
+
+    if settings.app_env in ("dev", "test"):
+        async with AsyncSessionLocal() as db:
+            seeded_users = await seed_demo_users(db)
+            await db.commit()
+            if seeded_users:
+                logger.info("seeded demo users: %s", ", ".join(seeded_users))
+
     yield
 
 
