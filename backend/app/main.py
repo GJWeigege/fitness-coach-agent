@@ -10,6 +10,7 @@ from app.api.knowledge import router as knowledge_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.middleware import SecurityHeadersMiddleware, TraceMiddleware
+from app.db.seed_graph import seed_demo_graph
 from app.db.seed_knowledge import seed_demo_knowledge
 from app.db.seed_users import seed_demo_users
 from app.db.session import AsyncSessionLocal
@@ -35,6 +36,12 @@ async def lifespan(_: FastAPI):
             await db.commit()
             if seeded_docs:
                 logger.info("seeded %s knowledge documents", seeded_docs)
+
+        async with AsyncSessionLocal() as db:
+            seeded_graph = await seed_demo_graph(db)
+            await db.commit()
+            if seeded_graph:
+                logger.info("seeded %s graph entities/edges", seeded_graph)
 
     yield
 
