@@ -241,3 +241,41 @@
   color: var(--color-text-secondary);
   margin-top: var(--space-sm);
 }
+
+.profile-page {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.profile-form {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.profile-form--compact {
+  margin-bottom: var(--space-lg);
+}
+
+.profile-form__grid {
+  display: grid;
+  gap: var(--space-md);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.profile-form__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.profile-form__meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.panel__status {
+  color: var(--color-success);
+  margin-bottom: var(--space-md);
+  font-size: 13px;
+}
