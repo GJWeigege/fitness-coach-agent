@@ -4,6 +4,21 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class ChatSendRequest(BaseModel):
+    session_id: uuid.UUID | None = None
+    message: str = Field(min_length=1, max_length=8000)
+    use_rag: bool = True
+
+
+class ChatSendResponse(BaseModel):
+    session_id: uuid.UUID
+    reply: str
+    citations: list[dict]
+    model_name: str
+    run_id: uuid.UUID | None = None
+    status: str | None = None
+
+
 class CreateSessionRequest(BaseModel):
     title: str | None = Field(default=None, max_length=255)
 

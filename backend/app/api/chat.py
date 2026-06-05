@@ -1,12 +1,21 @@
+import logging
 import uuid
+from functools import lru_cache
+from json import dumps
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, get_db, get_user_permissions
-from app.core.rate_limit import CHAT_WRITE_RATE, enforce_rate_limit, enforce_user_rate_limit
+from app.core.deps import get_current_user, get_db, get_user_permissions, require_permissions
+from app.core.errors import PUBLIC_ERROR_MESSAGE
+from app.core.rate_limit import CHAT_WRITE_RATE, STREAM_RATE, enforce_rate_limit, enforce_user_rate_limit
 from app.db.models import ChatMessage, ChatSession, User
+from app.db.session import AsyncSessionLocal
+from app.llm.dashscope_client import DashScopeClient
 from app.schemas.chat import (
+    ChatSendRequest,
+    ChatSendResponse,
     CreateSessionRequest,
     MessageFeedbackRequest,
     MessageItem,
@@ -15,15 +24,38 @@ from app.schemas.chat import (
     SessionMessagesResponse,
     SessionSummaryItem,
 )
+from app.services.chat_service import ChatService
 from app.services.chat_session_service import ChatSessionService
+from app.services.rag_service import RagService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-service = ChatSessionService()
+session_service = ChatSessionService()
+logger = logging.getLogger(__name__)
+
+
+@lru_cache
+def get_chat_service() -> ChatService:
+    llm_client = DashScopeClient()
+    rag_service = RagService(llm_client=llm_client)
+    return ChatService(llm_client=llm_client, rag_service=rag_service)
+
+
+def _require_chat_service() -> ChatService:
+    try:
+        return get_chat_service()
+    except ValueError as exc:
+        logger.exception("chat_service_init_failed")
+        raise HTTPException(status_code=500, detail=PUBLIC_ERROR_MESSAGE) from exc
 
 
 def _enforce_chat_write_rate_limit(http_request: Request, user: User) -> None:
     enforce_rate_limit(http_request, CHAT_WRITE_RATE, scope="chat_write")
     enforce_user_rate_limit(str(user.id), CHAT_WRITE_RATE, scope="chat_write")
+
+
+def _enforce_chat_stream_rate_limit(http_request: Request, user: User) -> None:
+    enforce_rate_limit(http_request, STREAM_RATE, scope="chat_stream")
+    enforce_user_rate_limit(str(user.id), STREAM_RATE, scope="chat_stream")
 
 
 def _require_session_read(session: ChatSession, user: User, permissions: set[str]) -> None:
@@ -56,7 +88,7 @@ async def list_sessions(
     filter_user = user_id
     if "session:read:all" not in permissions:
         filter_user = user.id
-    sessions = await service.list_sessions(db=db, user_id=filter_user)
+    sessions = await session_service.list_sessions(db=db, user_id=filter_user)
     return SessionListResponse(
         sessions=[
             SessionSummaryItem(
@@ -83,7 +115,7 @@ async def create_session(
         raise HTTPException(status_code=403, detail="无权管理会话。")
     _enforce_chat_write_rate_limit(http_request, user)
     title = request.title if request is not None else None
-    created = await service.create_session(db=db, user_id=user.id, title=title)
+    created = await session_service.create_session(db=db, user_id=user.id, title=title)
     return SessionSummaryItem(
         id=created.id,
         user_id=created.user_id,
@@ -107,7 +139,7 @@ async def rename_session(
     permissions = get_user_permissions(user)
     _require_session_manage(session, user, permissions)
     _enforce_chat_write_rate_limit(http_request, user)
-    updated = await service.rename_session(db=db, session_id=session_id, title=request.title)
+    updated = await session_service.rename_session(db=db, session_id=session_id, title=request.title)
     return SessionSummaryItem(
         id=updated.id,
         user_id=updated.user_id,
@@ -130,7 +162,7 @@ async def delete_session(
     permissions = get_user_permissions(user)
     _require_session_manage(session, user, permissions)
     _enforce_chat_write_rate_limit(http_request, user)
-    await service.delete_session(db=db, session_id=session_id)
+    await session_service.delete_session(db=db, session_id=session_id)
     return {"ok": True}
 
 
@@ -145,7 +177,7 @@ async def list_session_messages(
         raise HTTPException(status_code=404, detail="会话不存在。")
     permissions = get_user_permissions(user)
     _require_session_read(session, user, permissions)
-    messages = await service.list_messages(db=db, session_id=session_id)
+    messages = await session_service.list_messages(db=db, session_id=session_id)
     items: list[MessageItem] = []
     for item in messages:
         citations = None
@@ -163,6 +195,59 @@ async def list_session_messages(
             )
         )
     return SessionMessagesResponse(session_id=session_id, messages=items)
+
+
+@router.post("/send", response_model=ChatSendResponse)
+async def send_chat(
+    request: ChatSendRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permissions("chat:send")),
+) -> ChatSendResponse:
+    _enforce_chat_stream_rate_limit(http_request, user)
+    service = _require_chat_service()
+    result = await service.send_message(
+        db=db,
+        user_message=request.message,
+        session_id=request.session_id,
+        user_id=user.id,
+        use_rag=request.use_rag,
+    )
+    return ChatSendResponse(**result)
+
+
+@router.post("/stream")
+async def stream_chat(
+    request: ChatSendRequest,
+    http_request: Request,
+    user: User = Depends(require_permissions("chat:send")),
+):
+    _enforce_chat_stream_rate_limit(http_request, user)
+    service = _require_chat_service()
+
+    async def event_generator():
+        async with AsyncSessionLocal() as db:
+            try:
+                async for event in service.stream_message(
+                    db=db,
+                    user_message=request.message,
+                    user_id=user.id,
+                    session_id=request.session_id,
+                    use_rag=request.use_rag,
+                ):
+                    yield f"data: {dumps(event, ensure_ascii=False)}\n\n"
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else PUBLIC_ERROR_MESSAGE
+                yield f"data: {dumps({'type': 'error', 'message': detail}, ensure_ascii=False)}\n\n"
+            except Exception:
+                logger.exception("stream_chat_failed user_id=%s", user.id)
+                yield f"data: {dumps({'type': 'error', 'message': PUBLIC_ERROR_MESSAGE}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/messages/{message_id}/feedback")
