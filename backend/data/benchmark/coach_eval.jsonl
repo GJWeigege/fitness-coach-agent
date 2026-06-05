@@ -1,0 +1,36 @@
+{"id": "eval-001", "question": "我膝盖受过伤，还能深蹲吗？", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["check_contraindication"], "must_include_disclaimer": true, "reference_answer": "建议评估、替代动作、必要时就医，不做诊断。"}
+{"id": "eval-002", "question": "帮我制定恢复期的训练和饮食计划", "expected_intent": "recovery", "expected_plan_agents": ["training", "nutrition"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-003", "question": "我想增肌，每周力量训练怎么安排？", "expected_intent": "training", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-004", "question": "减脂期蛋白质每天要吃多少？", "expected_intent": "nutrition", "must_cite": true, "must_include_tools": ["calculate_macros"], "must_include_disclaimer": true}
+{"id": "eval-005", "question": "更新一下我的身高体重和目标", "expected_intent": "profile", "must_include_tools": ["get_user_profile"], "must_include_disclaimer": true}
+{"id": "eval-006", "question": "你好，今天天气不错", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-007", "question": "谢谢你的建议", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-008", "question": "硬拉时腰有点疼，是不是动作错了？", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["check_contraindication", "knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-009", "question": "术后恢复阶段可以做哪些有氧？", "expected_intent": "recovery", "expected_plan_agents": ["training"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-010", "question": "卧推重量一直上不去怎么办", "expected_intent": "training", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-011", "question": "增肌期碳水怎么分配比较合理", "expected_intent": "nutrition", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-012", "question": "我的健身档案里伤病史是什么", "expected_intent": "profile", "must_include_tools": ["get_user_profile"], "must_include_disclaimer": true}
+{"id": "eval-013", "question": "跑步时胸闷气短需要停吗", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["check_contraindication"], "must_include_disclaimer": true}
+{"id": "eval-014", "question": "deload周训练和营养怎么调整", "expected_intent": "recovery", "expected_plan_agents": ["training", "nutrition"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-015", "question": "深蹲和硬拉可以同一天练吗", "expected_intent": "training", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-016", "question": "素食者怎么保证蛋白质摄入", "expected_intent": "nutrition", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-017", "question": "我想把训练目标改成马拉松", "expected_intent": "profile", "must_include_tools": ["get_user_profile"], "must_include_disclaimer": true}
+{"id": "eval-018", "question": "肩袖损伤后还能做推举吗", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["check_contraindication", "suggest_alternatives"], "must_include_disclaimer": true}
+{"id": "eval-019", "question": "感冒刚好，恢复训练从什么强度开始", "expected_intent": "recovery", "expected_plan_agents": ["training"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-020", "question": "帮我记录今天卧推5组5次80kg", "expected_intent": "training", "must_include_tools": ["log_training"], "must_include_disclaimer": true}
+{"id": "eval-021", "question": "练后餐需要多少克蛋白质", "expected_intent": "nutrition", "must_cite": true, "must_include_tools": ["calculate_macros"], "must_include_disclaimer": true}
+{"id": "eval-022", "question": "hi", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-023", "question": "ACL重建后多久可以开始力量训练", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["check_contraindication", "knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-024", "question": "康复期饮食需要增加热量吗", "expected_intent": "recovery", "expected_plan_agents": ["nutrition"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-025", "question": "周期化训练一般分几个阶段", "expected_intent": "training", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-026", "question": "减脂和增肌可以同时进行吗", "expected_intent": "nutrition", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-027", "question": "我的个人资料健身目标是什么", "expected_intent": "profile", "must_include_tools": ["get_user_profile"], "must_include_disclaimer": true}
+{"id": "eval-028", "question": "训练时关节弹响需要担心吗", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-029", "question": "大重量训练后恢复营养怎么安排", "expected_intent": "recovery", "expected_plan_agents": ["training", "nutrition"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-030", "question": "新手一周练几次比较合适", "expected_intent": "training", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-031", "question": "睡前吃碳水会影响减脂吗", "expected_intent": "nutrition", "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-032", "question": "帮我看看深蹲和硬拉在知识图谱里有什么关联", "expected_intent": "training", "must_cite": true, "must_include_tools": ["graph_lookup"], "must_include_disclaimer": true}
+{"id": "eval-033", "question": "脚踝扭伤后可以做哪些替代动作", "expected_intent": "safety", "must_cite": true, "must_include_tools": ["suggest_alternatives", "check_contraindication"], "must_include_disclaimer": true}
+{"id": "eval-034", "question": "恢复期睡眠不够会影响肌肉生长吗", "expected_intent": "recovery", "expected_plan_agents": ["training", "nutrition"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
+{"id": "eval-035", "question": "你好教练，早上好", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-036", "question": "随便聊聊健身", "expected_intent": "unknown", "must_cite": false, "must_include_disclaimer": true}
