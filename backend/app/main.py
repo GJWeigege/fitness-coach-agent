@@ -8,6 +8,7 @@ from app.api.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.middleware import SecurityHeadersMiddleware, TraceMiddleware
+from app.db.seed_knowledge import seed_demo_knowledge
 from app.db.seed_users import seed_demo_users
 from app.db.session import AsyncSessionLocal
 
@@ -26,6 +27,12 @@ async def lifespan(_: FastAPI):
             await db.commit()
             if seeded_users:
                 logger.info("seeded demo users: %s", ", ".join(seeded_users))
+
+        async with AsyncSessionLocal() as db:
+            seeded_docs = await seed_demo_knowledge(db)
+            await db.commit()
+            if seeded_docs:
+                logger.info("seeded %s knowledge documents", seeded_docs)
 
     yield
 
