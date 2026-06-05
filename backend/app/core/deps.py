@@ -2,7 +2,9 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import get_db_session
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Database session dependency; wired in T-004."""
-    raise NotImplementedError("Database session not configured yet (T-004)")
+    async for session in get_db_session():
+        yield session
