@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { fetchMe, login, register } from "../api/auth";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { fetchMe, fetchPermissionMatrix, login, register } from "../api/auth";
 import type { UserProfile } from "../types";
 
 type AuthContextValue = {
   token: string;
   me: UserProfile | null;
+  permissionMatrix: Record<string, string[]>;
   permissions: Set<string>;
   authError: string;
   setAuthError: (msg: string) => void;
@@ -19,19 +20,25 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState(() => localStorage.getItem("token") || "");
   const [me, setMe] = useState<UserProfile | null>(null);
+  const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [authError, setAuthError] = useState("");
   const [loading, setLoading] = useState(Boolean(token));
+
+  const permissions = useMemo(() => new Set(me?.permissions || []), [me]);
 
   useEffect(() => {
     if (!token) {
       setMe(null);
+      setPermissionMatrix({});
       setLoading(false);
       return;
     }
     void (async () => {
       setLoading(true);
       try {
-        setMe(await fetchMe(token));
+        const profile = await fetchMe(token);
+        setMe(profile);
+        setPermissionMatrix(await fetchPermissionMatrix(token));
       } catch (err) {
         setAuthError((err as Error).message);
         localStorage.removeItem("token");
@@ -46,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("token", result.access_token);
     setToken(result.access_token);
     setMe(result.user);
+    setPermissionMatrix(await fetchPermissionMatrix(result.access_token));
     setAuthError("");
   }
 
@@ -61,16 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("token");
     setToken("");
     setMe(null);
+    setPermissionMatrix({});
     setAuthError("");
   }
-
-  const permissions = new Set(me?.permissions ?? []);
 
   return (
     <AuthContext.Provider
       value={{
         token,
         me,
+        permissionMatrix,
         permissions,
         authError,
         setAuthError,
@@ -95,6 +103,8 @@ export function usePermissions() {
   const { permissions } = useAuth();
   return {
     canSendChat: permissions.has("chat:send"),
+    canManageOwnSession: permissions.has("session:manage:own"),
+    canManageAllSession: permissions.has("session:manage:all"),
     canViewKnowledge: permissions.has("knowledge:read"),
     canManageKnowledge: permissions.has("knowledge:write"),
     canReindexKnowledge: permissions.has("knowledge:reindex"),
@@ -102,5 +112,6 @@ export function usePermissions() {
     canViewObservability: permissions.has("observability:read"),
     canRunBenchmark: permissions.has("benchmark:run"),
     canReadBenchmark: permissions.has("benchmark:read"),
+    canWriteFeedback: permissions.has("feedback:write"),
   };
 }
