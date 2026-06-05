@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+from app.core.errors import register_exception_handlers
+from app.core.middleware import SecurityHeadersMiddleware, TraceMiddleware
 
 settings = get_settings()
 
@@ -20,6 +22,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+register_exception_handlers(app)
+app.add_middleware(TraceMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list(),
