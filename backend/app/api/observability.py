@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, require_permissions
@@ -109,3 +110,54 @@ async def get_run_detail(
         finished_at=run.finished_at,
         timeline=timeline,
     )
+
+
+@router.get("/metrics/agent-summary")
+async def agent_metrics_summary(
+    days: int = Query(default=7, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permissions("observability:read")),
+) -> dict:
+    """Agent 运行指标摘要。`p95_latency_ms` 仅统计 `total_latency_ms` 非空的记录。"""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    filters = AgentRun.created_at >= since
+    stats = (
+        await db.execute(
+            select(
+                func.count().label("total"),
+                func.coalesce(
+                    func.sum(case((AgentRun.status == "completed", 1), else_=0)),
+                    0,
+                ).label("completed"),
+                func.coalesce(
+                    func.sum(case((AgentRun.status == "degraded", 1), else_=0)),
+                    0,
+                ).label("degraded"),
+                func.coalesce(func.avg(AgentRun.step_count), 0).label("avg_steps"),
+            ).where(filters)
+        )
+    ).one()
+    total = int(stats.total or 0)
+    if total == 0:
+        return {
+            "total_runs": 0,
+            "success_rate": 0,
+            "degraded_rate": 0,
+            "avg_step_count": 0,
+            "p95_latency_ms": 0,
+        }
+    completed = int(stats.completed or 0)
+    degraded = int(stats.degraded or 0)
+    p95_latency_ms = await db.scalar(
+        select(func.percentile_cont(0.95).within_group(AgentRun.total_latency_ms)).where(
+            filters,
+            AgentRun.total_latency_ms.isnot(None),
+        )
+    )
+    return {
+        "total_runs": total,
+        "success_rate": round(completed / total, 4),
+        "degraded_rate": round(degraded / total, 4),
+        "avg_step_count": round(float(stats.avg_steps or 0), 2),
+        "p95_latency_ms": int(p95_latency_ms or 0),
+    }
