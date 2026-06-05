@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     rag_hybrid_enabled: bool = True
     rag_keyword_top_k: int = 8
     rag_score_threshold: float = 0.35
+    rag_score_floor: float = 0.01
+    rag_score_min_gap: float = 0.004
     use_rag_default: bool = True
 
     graph_rag_enabled: bool = True
