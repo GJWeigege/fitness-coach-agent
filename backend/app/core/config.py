@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
 
     benchmark_concurrency: int = 2
+    benchmark_faithfulness_use_llm: bool = False
+    benchmark_reconcile_stale_runs: bool = True
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     trusted_proxies: str = ""

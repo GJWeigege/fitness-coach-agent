@@ -14,6 +14,9 @@ class DummyLLM:
     async def chat(self, messages, model=None, tools=None, tool_choice=None):
         class Result:
             content = "用户目标增肌，已建议每周三练与蛋白质摄入。"
+            prompt_tokens = 50
+            completion_tokens = 12
+            model_name = "qwen-plus"
 
         return Result()
 
@@ -176,6 +179,10 @@ async def test_maybe_update_summary_triggers(db_session, memory_settings):
 
     assert result.updated is True
     assert result.summary == "用户目标增肌，已建议每周三练与蛋白质摄入。"
+    assert result.prompt_tokens == 50
+    assert result.completion_tokens == 12
+    assert result.model_name == "qwen-plus"
+    assert result.latency_ms is not None
     await db_session.refresh(session)
     assert session.summary == result.summary
     assert session.summary_updated_at is not None

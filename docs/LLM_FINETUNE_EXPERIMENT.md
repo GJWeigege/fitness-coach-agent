@@ -23,9 +23,17 @@ LoRA 仅用于 **本地** 面试/demo：`vLLM` 或 `Ollama` 加载 `adapters/coa
 
 | 路径 | 说明 |
 |------|------|
-| `backend/data/finetune/coach_sft.jsonl` | SFT 样本（MVP 含 3 条示例；目标 ≥200） |
+| `backend/data/finetune/coach_sft.jsonl` | SFT 样本（**≥200** 条；运行 `scripts/generate_coach_sft.py` 生成） |
 
 字段：`messages[]` 多轮，assistant 含 intent/plan/answer JSON + disclaimer。
+
+## 数据生成
+
+```bash
+cd backend
+python scripts/generate_coach_sft.py
+python scripts/finetune_lora.py --dry-run
+```
 
 ## 脚本
 
@@ -46,7 +54,19 @@ python scripts/eval_lora.py --dry-run
 python scripts/eval_lora.py --subset-size 20
 ```
 
-对比指标：`intent_accuracy`、`plan_agent_recall`（与 benchmark §3.10 一致）。
+对比指标：`intent_accuracy`、`plan_agent_recall`、**`faithfulness`**（样本含 `reference_answer` 时；默认启发式 judge，`BENCHMARK_FAITHFULNESS_USE_LLM=true` 启用 LLM）。
+
+## Feedback → Benchmark 闭环
+
+| 反馈 | 目标文件 |
+|------|----------|
+| 👎 | `data/benchmark/feedback_import.jsonl` → 合并进 `coach_eval.jsonl` |
+| 👍 | 追加 `data/finetune/coach_sft.jsonl` |
+
+```bash
+python scripts/sync_feedback_benchmark.py --merge
+# 或 POST /benchmark/feedback/sync {"merge_queue": true}
+```
 
 ## 推荐超参（模板）
 

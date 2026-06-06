@@ -152,6 +152,38 @@ async def test_embedding(mock_async_client, llm_settings):
     assert client.request.call_args.kwargs["json"]["input"] == ["a", "b"]
 
 
+async def test_embedding_batches_large_inputs(mock_async_client, llm_settings):
+    client, _ = mock_async_client
+
+    def _batch_response(batch: list[str]) -> httpx.Response:
+        return _http_response(
+            200,
+            {
+                "data": [
+                    {"index": index, "embedding": [float(index)]}
+                    for index in range(len(batch))
+                ]
+            },
+        )
+
+    client.request = AsyncMock(
+        side_effect=[
+            _batch_response([f"t{i}" for i in range(10)]),
+            _batch_response([f"t{i}" for i in range(10, 12)]),
+        ]
+    )
+
+    dashscope = DashScopeClient()
+    vectors = await dashscope.embedding([f"t{i}" for i in range(12)])
+
+    assert len(vectors) == 12
+    assert vectors[0] == [0.0]
+    assert vectors[11] == [1.0]
+    assert client.request.await_count == 2
+    assert len(client.request.call_args_list[0].kwargs["json"]["input"]) == 10
+    assert len(client.request.call_args_list[1].kwargs["json"]["input"]) == 2
+
+
 def _sse_lines(*events: dict) -> list[str]:
     lines = []
     for event in events:

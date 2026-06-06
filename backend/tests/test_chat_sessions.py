@@ -76,6 +76,36 @@ async def test_admin_can_list_all_sessions(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_session_rejects_benchmark_prefix(client: AsyncClient):
+    user = await register_user(client, "bench_title_user")
+    headers = auth_headers(user["access_token"])
+
+    response = await client.post(
+        "/chat/sessions",
+        headers=headers,
+        json={"title": "benchmark:my-test"},
+    )
+    assert response.status_code == 400
+    assert "评测专用前缀" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rename_session_rejects_benchmark_prefix(client: AsyncClient):
+    user = await register_user(client, "bench_rename_user")
+    headers = auth_headers(user["access_token"])
+    created = await client.post("/chat/sessions", headers=headers, json={"title": "正常标题"})
+    session_id = created.json()["id"]
+
+    response = await client.patch(
+        f"/chat/sessions/{session_id}",
+        headers=headers,
+        json={"title": "benchmark:evil"},
+    )
+    assert response.status_code == 400
+    assert "评测专用前缀" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_rename_session(client: AsyncClient):
     user = await register_user(client, "rename_user")
     headers = auth_headers(user["access_token"])

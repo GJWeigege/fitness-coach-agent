@@ -16,6 +16,7 @@ from app.core.middleware import SecurityHeadersMiddleware, TraceMiddleware
 from app.db.seed_graph import seed_demo_graph
 from app.db.seed_knowledge import seed_demo_knowledge
 from app.db.seed_users import seed_demo_users
+from app.services.benchmark_service import BenchmarkService
 from app.db.session import AsyncSessionLocal
 
 settings = get_settings()
@@ -26,6 +27,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     settings.validate_auth_secret_for_env()
     settings.validate_cors_origins_for_env()
+
+    if settings.benchmark_reconcile_stale_runs:
+        async with AsyncSessionLocal() as db:
+            reconciled = await BenchmarkService().reconcile_stale_runs(db)
+            await db.commit()
+            if reconciled:
+                logger.warning("reconciled stale benchmark runs: %s", reconciled)
 
     if settings.app_env in ("dev", "test"):
         async with AsyncSessionLocal() as db:

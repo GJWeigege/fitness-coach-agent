@@ -27,6 +27,10 @@ class MemoryBuildResult:
 class SummaryUpdateResult:
     updated: bool
     summary: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    model_name: str | None = None
+    latency_ms: int | None = None
 
 
 class MemoryService:
@@ -195,12 +199,20 @@ class MemoryService:
             session.summary = summary
             session.summary_updated_at = datetime.now(timezone.utc)
             await db.flush()
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.info(
                 "memory_summary_updated session_id=%s latency_ms=%s",
                 session_id,
-                int((time.perf_counter() - start) * 1000),
+                latency_ms,
             )
-            return SummaryUpdateResult(updated=True, summary=summary)
+            return SummaryUpdateResult(
+                updated=True,
+                summary=summary,
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                model_name=result.model_name,
+                latency_ms=latency_ms,
+            )
         except Exception:
             logger.exception("memory_summary_failed session_id=%s", session_id)
             return SummaryUpdateResult(updated=False)

@@ -491,8 +491,11 @@
   padding: 12px 16px;
   border-radius: var(--radius-lg);
   line-height: 1.65;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.message--user .message__content {
+  white-space: pre-wrap;
 }
 
 .message--assistant .message__content {

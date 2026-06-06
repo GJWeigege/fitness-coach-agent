@@ -74,6 +74,15 @@ async def build_llm_messages(
         else None,
     )
 
+    run_meta = conf.get("run_meta")
+    if isinstance(run_meta, dict):
+        if memory_result.memory_compacted:
+            run_meta["memory_compacted"] = True
+        run_meta["dropped_message_count"] = max(
+            int(run_meta.get("dropped_message_count") or 0),
+            memory_result.dropped_message_count,
+        )
+
     messages = list(memory_result.messages)
     user_message = state.get("user_message", "")
     if user_message:

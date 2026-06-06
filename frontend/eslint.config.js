@@ -18,5 +18,22 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Standard data-fetch / auth bootstrap patterns; too noisy for this app.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-refresh/only-export-components': [
+        'error',
+        {
+          allowConstantExport: true,
+          allowExportNames: ['useAuth', 'usePermissions', 'useApp'],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/router.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

@@ -50,7 +50,7 @@ class MockDashScopeClient:
                 yield chunk
             else:
                 yield chunk
-        yield StreamDone(model_name="mock-model")
+        yield StreamDone(model_name="mock-model", prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
     async def chat_stream_with_tools(self, messages, tools, *, model=None):
         self.tool_stream_calls.append((messages, tools, {"model": model}))
@@ -61,4 +61,4 @@ class MockDashScopeClient:
             chunks = self.stream_chunks
         for chunk in chunks:
             yield chunk
-        yield StreamDone(model_name="mock-model")
+        yield StreamDone(model_name="mock-model", prompt_tokens=10, completion_tokens=5, total_tokens=15)

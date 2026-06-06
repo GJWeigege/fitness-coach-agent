@@ -34,3 +34,48 @@
 {"id": "eval-034", "question": "恢复期睡眠不够会影响肌肉生长吗", "expected_intent": "recovery", "expected_plan_agents": ["training", "nutrition"], "must_cite": true, "must_include_tools": ["knowledge_search"], "must_include_disclaimer": true}
 {"id": "eval-035", "question": "你好教练，早上好", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
 {"id": "eval-036", "question": "随便聊聊健身", "expected_intent": "unknown", "must_cite": false, "must_include_disclaimer": true}
+{"id": "eval-037", "question": "三分化训练怎么安排推拉腿", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-038", "question": "引体向上做不了有什么退阶动作", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-039", "question": "有氧和力量同一天练顺序怎么排", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-040", "question": "帮我记录今天深蹲3组8次100kg", "expected_intent": "training", "must_cite": false, "must_include_disclaimer": true, "must_include_tools": ["log_training"]}
+{"id": "eval-041", "question": "卧推和肩推可以同天吗", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-042", "question": "核心训练每周几次合适", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-043", "question": "超级组训练适合新手吗", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-044", "question": "练腿日需要单独一天吗", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-045", "question": "弹力带训练能增肌吗", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-046", "question": "家庭无器械怎么练胸", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-047", "question": "减脂期每天热量缺口设多少", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["calculate_macros"]}
+{"id": "eval-048", "question": "练前餐和练后餐怎么搭配", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-049", "question": "乳糖不耐怎么补充蛋白质", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-050", "question": "增肌期需要吃蛋白粉吗", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-051", "question": "间歇性断食适合健身吗", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-052", "question": "外食怎么估算热量", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-053", "question": "电解质补充有必要吗", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-054", "question": "低碳饮食会影响力量吗", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-055", "question": "过度训练有哪些信号", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training"]}
+{"id": "eval-056", "question": "肌肉酸痛还能继续练吗", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training"]}
+{"id": "eval-057", "question": "旅行中断训练如何恢复", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training", "nutrition"]}
+{"id": "eval-058", "question": "比赛前一周训练怎么 taper", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training"]}
+{"id": "eval-059", "question": "睡眠少于6小时怎么调整训练", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training", "nutrition"]}
+{"id": "eval-060", "question": "筋膜枪对恢复有帮助吗", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training"]}
+{"id": "eval-061", "question": "训练时眼前发黑要停吗", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication"]}
+{"id": "eval-062", "question": "腰突患者可以做硬拉吗", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication", "suggest_alternatives"]}
+{"id": "eval-063", "question": "胸口压迫感还能跑步吗", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication"]}
+{"id": "eval-064", "question": "跟腱炎还能做跳跃训练吗", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication", "suggest_alternatives"]}
+{"id": "eval-065", "question": "高血压用药期间训练注意什么", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication", "knowledge_search"]}
+{"id": "eval-066", "question": "孕期可以力量训练吗", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication"]}
+{"id": "eval-067", "question": "我想更新体重到72kg", "expected_intent": "profile", "must_cite": false, "must_include_disclaimer": true, "must_include_tools": ["get_user_profile"]}
+{"id": "eval-068", "question": "我的训练经验水平是什么", "expected_intent": "profile", "must_cite": false, "must_include_disclaimer": true, "must_include_tools": ["get_user_profile"]}
+{"id": "eval-069", "question": "帮我看看档案里的伤病记录", "expected_intent": "profile", "must_cite": false, "must_include_disclaimer": true, "must_include_tools": ["get_user_profile"]}
+{"id": "eval-070", "question": "我想改成居家训练设备清单", "expected_intent": "profile", "must_cite": false, "must_include_disclaimer": true, "must_include_tools": ["get_user_profile"]}
+{"id": "eval-071", "question": "好的知道了", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-072", "question": "拜拜", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-073", "question": "nice day", "expected_intent": "chitchat", "must_cite": false, "must_include_disclaimer": false}
+{"id": "eval-074", "question": "随便说说", "expected_intent": "unknown", "must_cite": false, "must_include_disclaimer": true}
+{"id": "eval-075", "question": "波比跳适合减脂吗", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-076", "question": "咖啡因对训练表现影响", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-077", "question": "拉伤后冰敷还是热敷", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training"]}
+{"id": "eval-078", "question": "训练后持续头晕怎么办", "expected_intent": "safety", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["check_contraindication"]}
+{"id": "eval-079", "question": "划船和引体怎么分配", "expected_intent": "training", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-080", "question": "素食增肌一日食谱示例", "expected_intent": "nutrition", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"]}
+{"id": "eval-081", "question": "马拉松赛后恢复周计划", "expected_intent": "recovery", "must_cite": true, "must_include_disclaimer": true, "must_include_tools": ["knowledge_search"], "expected_plan_agents": ["training", "nutrition"]}

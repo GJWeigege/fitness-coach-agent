@@ -29,6 +29,32 @@ def load_banned_diagnosis_terms() -> list[str]:
     return terms
 
 
+def collect_rag_citations(
+    *,
+    rag_citations: list[dict] | None = None,
+    tool_calls: list[dict] | None = None,
+) -> list[dict]:
+    """Merge citations from state and successful knowledge_search tool results."""
+    merged: list[dict] = list(rag_citations or [])
+    seen = {c.get("chunk_id") for c in merged if c.get("chunk_id")}
+    for tc in tool_calls or []:
+        if tc.get("name") != "knowledge_search" or tc.get("status") == "error":
+            continue
+        result = tc.get("result")
+        if not isinstance(result, dict):
+            continue
+        for citation in result.get("citations") or []:
+            if not isinstance(citation, dict):
+                continue
+            chunk_id = citation.get("chunk_id")
+            if chunk_id:
+                if chunk_id in seen:
+                    continue
+                seen.add(chunk_id)
+            merged.append(citation)
+    return merged
+
+
 class CoachGuardrails:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -42,21 +68,29 @@ class CoachGuardrails:
         if not citations:
             return False
 
-        scores = [float(c.get("score", 0)) for c in citations]
+        substantive = [c for c in citations if (c.get("content") or "").strip()]
+        if not substantive:
+            return False
+
+        scores = sorted((float(c.get("score", 0)) for c in substantive), reverse=True)
         top = scores[0]
         if top <= 0:
             return False
 
-        if top >= self.settings.rag_score_threshold:
-            return True
-
         if top < self.settings.rag_score_floor:
             return False
+
+        # Hybrid / keyword retrieval uses RRF-derived scores (~0.02–0.35), not cosine similarity.
+        if any(c.get("source") in {"hybrid", "keyword"} for c in substantive):
+            return True
+
+        if top >= self.settings.rag_score_threshold:
+            return True
 
         if len(scores) >= 2 and (top - scores[1]) >= self.settings.rag_score_min_gap:
             return True
 
-        return len(scores) == 1
+        return len(substantive) == 1
 
     def contains_banned_diagnosis(self, text: str) -> bool:
         if not text:

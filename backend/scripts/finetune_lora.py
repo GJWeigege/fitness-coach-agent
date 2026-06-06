@@ -61,6 +61,8 @@ def main() -> int:
     if args.dry_run:
         print("\n[dry-run] Skipping training. Install torch+peft+transformers for real run.")
         print("[dry-run] Inference: LORA_ENABLED=true LORA_ADAPTER_PATH=<output> via vLLM/Ollama only.")
+        if config["sample_count"] < 200:
+            print(f"[dry-run] WARNING: sample_count {config['sample_count']} < 200 (design target).")
         return 0
 
     try:
@@ -74,8 +76,12 @@ def main() -> int:
         )
         return 1
 
-    if config["sample_count"] < 10:
-        print(f"Need more SFT samples (found {config['sample_count']}).", file=sys.stderr)
+    if config["sample_count"] < 200:
+        print(
+            f"Need >=200 SFT samples for acceptance (found {config['sample_count']}). "
+            "Run: python scripts/generate_coach_sft.py",
+            file=sys.stderr,
+        )
         return 1
 
     print("Training pipeline not executed in MVP repo — use --dry-run or extend this script locally.")

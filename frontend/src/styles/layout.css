@@ -102,6 +102,7 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--color-bg);
+  min-height: 0;
 }
 
 .app-content {

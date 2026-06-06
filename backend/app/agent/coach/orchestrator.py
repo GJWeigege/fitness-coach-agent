@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.coach.graph import build_coach_graph
+from app.agent.coach.token_usage import token_totals
 from app.agent.coach.state import CoachState, initial_coach_state
 from app.agent.guardrails import CoachGuardrails
 from app.agent.tools.registry import CoachToolRegistry
@@ -88,11 +89,14 @@ class CoachGraphOrchestrator:
         summary: str,
         *,
         step_index: int | None = None,
+        agent: str | None = None,
         detail: dict | None = None,
     ) -> dict:
         evt: dict = {"type": "step", "phase": phase, "summary": summary}
         if step_index is not None:
             evt["step_index"] = step_index
+        if agent:
+            evt["agent"] = agent
         if detail:
             evt["detail"] = detail
         return evt
@@ -109,6 +113,7 @@ class CoachGraphOrchestrator:
             return self._step_event(
                 f"{agent}_agent",
                 f"{agent} 子 agent 执行中",
+                agent=agent,
                 detail={"agent": agent},
             )
         if node_name == "safety_review":
@@ -133,6 +138,8 @@ class CoachGraphOrchestrator:
             status = "degraded"
             final_answer = FALLBACK_TEMPLATE
 
+        prompt_tokens, completion_tokens = token_totals(run_meta)
+
         return CoachRunResult(
             run_id=run_id,
             trace_id=trace_id,
@@ -144,8 +151,8 @@ class CoachGraphOrchestrator:
             tool_calls=list(final_state.get("tool_calls") or []),
             graph_entities_used=list(final_state.get("graph_entities_used") or []),
             model_name=model_name or self.settings.coach_answer_model,
-            prompt_tokens=None,
-            completion_tokens=None,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             status=status,
             memory_compacted=bool(run_meta.get("memory_compacted")),
             dropped_message_count=int(run_meta.get("dropped_message_count") or 0),
@@ -221,6 +228,10 @@ class CoachGraphOrchestrator:
                 async for event in self.graph.astream_events(init_state, config, version="v2"):
                     if event.get("event") == "on_chain_start" and self.settings.agent_enable_thinking_steps:
                         node = event.get("metadata", {}).get("langgraph_node")
+                        # Skip internal routing runnables (e.g. route_after_plan_execute)
+                        # that share langgraph_node with the parent graph node.
+                        if not node or event.get("name") != node:
+                            continue
                         node_input = event.get("data", {}).get("input")
                         step_evt = self._maybe_step_for_node(node, node_input)
                         if step_evt:
@@ -271,23 +282,29 @@ class CoachGraphOrchestrator:
             yield result.to_result_event()
 
         except ValueError as exc:
+            prompt_tokens, completion_tokens = token_totals(run_meta)
             await self.observability.finish_run(
                 db,
                 run.id,
                 status="failed",
                 error_message=str(exc),
                 total_latency_ms=int((time.perf_counter() - start) * 1000),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
             await db.commit()
             yield {"type": "error", "message": str(exc), "trace_id": trace_id}
         except Exception as exc:
             logger.exception("coach_stream_turn_failed")
+            prompt_tokens, completion_tokens = token_totals(run_meta)
             await self.observability.finish_run(
                 db,
                 run.id,
                 status="failed",
                 error_message=str(exc),
                 total_latency_ms=int((time.perf_counter() - start) * 1000),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
             await db.commit()
             yield {"type": "error", "message": PUBLIC_ERROR_MESSAGE, "trace_id": trace_id}
@@ -329,9 +346,11 @@ class CoachGraphOrchestrator:
                 },
             )
 
+        cot_traces = self.guardrails.redact_cot_traces(result.cot_traces)
+
         snapshot_payload = {
             "tool_calls": result.tool_calls,
-            "cot": result.cot_traces,
+            "cot": cot_traces,
             "parallel_agents_used": result.parallel_agents_used,
             "graph_entities_used": result.graph_entities_used,
         }

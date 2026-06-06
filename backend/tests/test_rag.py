@@ -17,7 +17,7 @@ class MockLLM:
     def __init__(self, query_vector: list[float]) -> None:
         self.query_vector = query_vector
 
-    async def embeddings(self, texts: list[str]) -> list[list[float]]:
+    async def embedding(self, texts: list[str]) -> list[list[float]]:
         return [self.query_vector for _ in texts]
 
 

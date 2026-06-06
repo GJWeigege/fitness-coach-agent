@@ -28,9 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!token) {
-      setMe(null);
-      setPermissionMatrix({});
-      setLoading(false);
       return;
     }
     void (async () => {
@@ -43,6 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthError((err as Error).message);
         localStorage.removeItem("token");
         setToken("");
+        setMe(null);
+        setPermissionMatrix({});
       } finally {
         setLoading(false);
       }

@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.coach.orchestrator import CoachGraphOrchestrator, CoachRunResult
+from app.agent.coach.token_usage import combined_total_tokens, merge_token_counts
 from app.core.config import get_settings
 from app.db.models import ChatMessage, ChatSession
 from app.llm.dashscope_client import DashScopeClient
@@ -23,6 +24,31 @@ class ChatService:
         self.orchestrator = CoachGraphOrchestrator(
             llm_client=llm_client,
             rag_service=rag_service,
+        )
+
+    async def _apply_summary_usage(
+        self,
+        db: AsyncSession,
+        *,
+        result: CoachRunResult,
+        summary_result,
+    ) -> None:
+        if summary_result.prompt_tokens is None and summary_result.completion_tokens is None:
+            return
+        result.prompt_tokens, result.completion_tokens = merge_token_counts(
+            result.prompt_tokens,
+            result.completion_tokens,
+            summary_result.prompt_tokens,
+            summary_result.completion_tokens,
+        )
+        await self.orchestrator.observability.record_llm_call(
+            db,
+            result.run_id,
+            purpose="memory_summary",
+            model=summary_result.model_name or self.settings.coach_answer_model,
+            prompt_tokens=summary_result.prompt_tokens,
+            completion_tokens=summary_result.completion_tokens,
+            latency_ms=summary_result.latency_ms,
         )
 
     def _touch_session(self, session: ChatSession) -> None:
@@ -83,13 +109,13 @@ class ChatService:
             parallel_agents_used=bool(event.get("parallel_agents_used")),
         )
 
-    async def _complete_turn(
+    async def _complete_turn_events(
         self,
         db: AsyncSession,
         *,
         session: ChatSession,
         result: CoachRunResult,
-    ) -> dict:
+    ) -> AsyncGenerator[dict, None]:
         self._touch_session(session)
         assistant_record = ChatMessage(
             session_id=session.id,
@@ -98,11 +124,7 @@ class ChatService:
             model_name=result.model_name,
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
-            total_tokens=(
-                (result.prompt_tokens or 0) + (result.completion_tokens or 0)
-                if result.prompt_tokens and result.completion_tokens
-                else None
-            ),
+            total_tokens=combined_total_tokens(result.prompt_tokens, result.completion_tokens),
             latency_ms=result.total_latency_ms,
             retrieved_chunks={"items": result.citations},
             agent_run_id=result.run_id,
@@ -117,9 +139,25 @@ class ChatService:
         )
         if summary_result.updated:
             memory_summary_updated = True
-            if self.settings.agent_enable_thinking_steps:
-                pass
+            await self._apply_summary_usage(db, result=result, summary_result=summary_result)
+            assistant_record.prompt_tokens = result.prompt_tokens
+            assistant_record.completion_tokens = result.completion_tokens
+            assistant_record.total_tokens = combined_total_tokens(
+                result.prompt_tokens,
+                result.completion_tokens,
+            )
             await db.commit()
+
+        if self.settings.agent_enable_thinking_steps:
+            yield {
+                "type": "step",
+                "phase": "memory_summary",
+                "summary": (
+                    "已更新会话摘要。"
+                    if memory_summary_updated
+                    else "正在整理会话摘要…"
+                ),
+            }
 
         await self.orchestrator.finalize_run(
             db,
@@ -130,7 +168,7 @@ class ChatService:
         )
         await db.commit()
 
-        return {
+        yield {
             "type": "done",
             "session_id": str(session.id),
             "run_id": str(result.run_id),
@@ -140,6 +178,21 @@ class ChatService:
             "latency_ms": result.total_latency_ms,
             "assistant_message_id": str(assistant_record.id),
         }
+
+    async def _complete_turn(
+        self,
+        db: AsyncSession,
+        *,
+        session: ChatSession,
+        result: CoachRunResult,
+    ) -> dict:
+        done_evt: dict | None = None
+        async for event in self._complete_turn_events(db, session=session, result=result):
+            if event.get("type") == "done":
+                done_evt = event
+        if done_evt is None:
+            raise RuntimeError("教练回合未完成。")
+        return done_evt
 
     async def stream_message(
         self,
@@ -179,15 +232,8 @@ class ChatService:
             yield {"type": "error", "message": "教练未完成响应，请重试。"}
             return
 
-        if self.settings.agent_enable_thinking_steps:
-            yield {
-                "type": "step",
-                "phase": "memory_summary",
-                "summary": "正在整理会话摘要…",
-            }
-
-        done_evt = await self._complete_turn(db, session=session, result=result)
-        yield done_evt
+        async for event in self._complete_turn_events(db, session=session, result=result):
+            yield event
 
     async def send_message(
         self,

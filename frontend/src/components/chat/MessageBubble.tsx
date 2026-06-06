@@ -2,6 +2,7 @@ import type { LocalMessage } from "../../types";
 import { BotIcon, UserIcon } from "../ui/Icons";
 import { Badge } from "../ui/Badge";
 import { AgentStepsPanel } from "./AgentStepsPanel";
+import { MarkdownContent } from "./MarkdownContent";
 
 const roleLabels: Record<string, string> = {
   user: "用户",
@@ -44,7 +45,19 @@ export function MessageBubble({ message, canFeedback, onFeedback }: MessageBubbl
             <Badge variant="info">{intentLabels[message.intent] || message.intent}</Badge>
           ) : null}
         </div>
-        <div className="message__content">{message.content || (isUser ? "" : "思考中...")}</div>
+        <div className="message__content">
+          {message.content ? (
+            isAssistant ? (
+              <MarkdownContent content={message.content} />
+            ) : (
+              message.content
+            )
+          ) : isUser ? (
+            ""
+          ) : (
+            "思考中..."
+          )}
+        </div>
         {message.citations && message.citations.length > 0 ? (
           <details className="message__citations">
             <summary>引用知识片段（{message.citations.length}）</summary>

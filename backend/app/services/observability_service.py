@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AgentRun, AgentStep
+from app.db.models import AgentRun, AgentStep, LlmCall
 
 
 class ObservabilityService:
@@ -54,6 +54,31 @@ class ObservabilityService:
         db.add(step)
         await db.flush()
         return step
+
+    async def record_llm_call(
+        self,
+        db: AsyncSession,
+        run_id: uuid.UUID,
+        *,
+        purpose: str,
+        model: str,
+        prompt_tokens: int | None,
+        completion_tokens: int | None,
+        latency_ms: int | None = None,
+        step_id: uuid.UUID | None = None,
+    ) -> LlmCall:
+        record = LlmCall(
+            run_id=run_id,
+            step_id=step_id,
+            purpose=purpose,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+        )
+        db.add(record)
+        await db.flush()
+        return record
 
     async def finish_run(
         self,

@@ -1,6 +1,7 @@
 import { useUsers } from "../hooks/useUsers";
 import { Button } from "../components/ui/Button";
-import { Badge, roleVariant } from "../components/ui/Badge";
+import { Badge } from "../components/ui/Badge";
+import { roleVariant } from "../components/ui/badgeVariants";
 import { ShieldIcon } from "../components/ui/Icons";
 
 export function UsersPage() {

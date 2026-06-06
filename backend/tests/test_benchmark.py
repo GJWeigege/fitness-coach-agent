@@ -19,8 +19,11 @@ from app.services.benchmark_runner import (
     load_benchmark_dataset,
     parse_benchmark_sample,
     percentile,
+    resolve_dataset_path,
+    select_benchmark_samples,
 )
 from app.services.chat_service import ChatService
+from app.services.faithfulness_judge import heuristic_faithfulness
 from app.services.rag_service import RagService
 from tests.coach_mocks import MockDashScopeClient
 
@@ -38,11 +41,47 @@ def _step(phase: str, payload: dict | None, step_index: int = 0) -> AgentStep:
 
 def test_dataset_has_minimum_samples_and_required_fields():
     samples = load_benchmark_dataset(DEFAULT_DATASET_PATH)
-    assert len(samples) >= 30
+    assert len(samples) >= 80
     for sample in samples:
         assert sample.id
         assert sample.question
         assert sample.expected_intent
+
+
+def test_resolve_dataset_path_rejects_outside_benchmark_dir():
+    with pytest.raises(FileNotFoundError):
+        resolve_dataset_path("../../.env")
+
+
+def test_select_benchmark_samples_limit():
+    samples = load_benchmark_dataset(DEFAULT_DATASET_PATH)
+    subset = select_benchmark_samples(samples, limit=10)
+    assert len(subset) == 10
+    assert subset[0].id == samples[0].id
+
+
+def test_benchmark_create_request_rejects_both_subset_options():
+    from pydantic import ValidationError
+
+    from app.schemas.benchmark import BenchmarkRunCreateRequest
+
+    with pytest.raises(ValidationError, match="sample_limit"):
+        BenchmarkRunCreateRequest(sample_limit=10, sample_ids=["eval-001"])
+
+
+def test_benchmark_create_request_rejects_empty_sample_ids():
+    from pydantic import ValidationError
+
+    from app.schemas.benchmark import BenchmarkRunCreateRequest
+
+    with pytest.raises(ValidationError, match="sample_ids"):
+        BenchmarkRunCreateRequest(sample_ids=[])
+
+
+def test_select_benchmark_samples_by_ids():
+    samples = load_benchmark_dataset(DEFAULT_DATASET_PATH)
+    picked = select_benchmark_samples(samples, sample_ids=[samples[0].id, samples[2].id])
+    assert [sample.id for sample in picked] == [samples[0].id, samples[2].id]
 
 
 def test_parse_benchmark_sample_with_plan_agents():
@@ -133,6 +172,55 @@ def test_evaluate_sample_outcome_passes_when_all_criteria_met():
     assert evaluation.safety_compliant is True
 
 
+def test_faithfulness_affects_passed_when_reference_present():
+    from app.services.faithfulness_judge import FaithfulnessVerdict
+
+    sample = BenchmarkSample(
+        id="faith-1",
+        question="如何训练",
+        expected_intent="training",
+        reference_answer="循序渐进训练",
+    )
+    faithful = evaluate_sample_outcome(
+        sample,
+        predicted_intent="training",
+        citations=[],
+        steps=[],
+        reply="循序渐进训练建议",
+        latency_ms=100,
+        agent_run_id=uuid.uuid4(),
+        faithfulness_verdict=FaithfulnessVerdict(
+            faithful=True,
+            score=0.9,
+            method="heuristic",
+        ),
+    )
+    unfaithful = evaluate_sample_outcome(
+        sample,
+        predicted_intent="training",
+        citations=[],
+        steps=[],
+        reply="完全无关的回答",
+        latency_ms=100,
+        agent_run_id=uuid.uuid4(),
+        faithfulness_verdict=FaithfulnessVerdict(
+            faithful=False,
+            score=0.1,
+            method="heuristic",
+        ),
+    )
+    assert faithful.passed is True
+    assert unfaithful.passed is False
+
+
+def test_benchmark_error_message_sanitizes_internal_errors():
+    from app.core.errors import PUBLIC_ERROR_MESSAGE
+    from app.services.benchmark_service import benchmark_error_message
+
+    assert benchmark_error_message(ValueError("评测样本子集为空")) == "评测样本子集为空"
+    assert benchmark_error_message(RuntimeError("secret db path /var/lib")) == PUBLIC_ERROR_MESSAGE
+
+
 def test_aggregate_benchmark_metrics():
     evaluations = [
         evaluate_sample_outcome(
@@ -190,6 +278,56 @@ def test_aggregate_benchmark_metrics():
 def test_percentile_single_value():
     assert percentile([42], 95) == 42
     assert percentile([10, 20, 30, 40, 100], 95) == 100
+
+
+def test_mock_benchmark_aggregate_meets_thresholds():
+    from app.agent.guardrails import COACH_DISCLAIMER
+
+    disclaimer_reply = f"训练与营养建议。\n\n{COACH_DISCLAIMER}"
+    perfect = [
+        evaluate_sample_outcome(
+            BenchmarkSample(
+                id=f"eval-{i:03d}",
+                question="q",
+                expected_intent="recovery" if i % 5 == 0 else "training",
+                expected_plan_agents=["training", "nutrition"] if i % 5 == 0 else [],
+                must_cite=True,
+                must_include_tools=["knowledge_search"] if i % 3 == 0 else [],
+                must_include_disclaimer=True,
+                reference_answer="训练建议",
+            ),
+            predicted_intent="recovery" if i % 5 == 0 else "training",
+            citations=[{"chunk_id": "c1"}],
+            steps=[
+                _step("safety_review", {}),
+                _step(
+                    "planning",
+                    {
+                        "execution_plan": {
+                            "tasks": [{"agent": "training"}, {"agent": "nutrition"}],
+                        }
+                    },
+                ),
+                _step("finalize", {"tool_calls": [{"name": "knowledge_search"}]}),
+            ],
+            reply=disclaimer_reply,
+            latency_ms=100 + i,
+            agent_run_id=uuid.uuid4(),
+            faithfulness_verdict=heuristic_faithfulness(
+                reply=disclaimer_reply, reference_answer="训练建议"
+            ),
+        )
+        for i in range(80)
+    ]
+    metrics = aggregate_benchmark_metrics(perfect)
+    assert metrics["sample_count"] == 80
+    assert metrics["intent_accuracy"] >= 0.75
+    assert metrics["plan_agent_recall"] >= 0.70
+    assert metrics["citation_rate"] >= 0.70
+    assert metrics["tool_recall"] >= 0.65
+    assert metrics["safety_compliance"] >= 0.90
+    assert metrics["latency_p95_ms"] <= 8000
+    assert metrics["faithfulness"] is not None
 
 
 @pytest.fixture

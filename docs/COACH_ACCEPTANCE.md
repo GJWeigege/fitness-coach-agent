@@ -32,6 +32,10 @@
 | safety_compliance | ≥ 0.90 |
 | latency_p95_ms | ≤ 8000 |
 
+### Mock 聚合验收（CI）
+
+`test_mock_benchmark_aggregate_meets_thresholds` 使用 80 条全通过样本验证聚合逻辑与 §3.10 阈值公式一致（非 live LLM 全量跑分）。Live API 全量 benchmark 需在部署环境单独执行 `POST /benchmark/runs` 并归档 metrics。
+
 ## 10.1 推荐手工验收用例
 
 | # | 输入 | 预期 |

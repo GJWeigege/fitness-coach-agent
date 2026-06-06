@@ -7,6 +7,8 @@ from app.core.config import get_settings
 from app.llm.tool_call_buffer import ToolCallBuffer
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+# DashScope text-embedding-v3 rejects batches larger than 10 inputs.
+_EMBEDDING_BATCH_SIZE = 10
 
 
 @dataclass
@@ -130,17 +132,24 @@ class DashScopeClient:
         )
 
     async def embedding(self, texts: list[str]) -> list[list[float]]:
-        response = await self._request_with_retry(
-            "POST",
-            "/embeddings",
-            json={
-                "model": self.settings.coach_embedding_model,
-                "input": texts,
-            },
-        )
-        body = response.json()
-        ordered = sorted(body["data"], key=lambda item: item["index"])
-        return [item["embedding"] for item in ordered]
+        if not texts:
+            return []
+
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), _EMBEDDING_BATCH_SIZE):
+            batch = texts[start : start + _EMBEDDING_BATCH_SIZE]
+            response = await self._request_with_retry(
+                "POST",
+                "/embeddings",
+                json={
+                    "model": self.settings.coach_embedding_model,
+                    "input": batch,
+                },
+            )
+            body = response.json()
+            ordered = sorted(body["data"], key=lambda item: item["index"])
+            vectors.extend(item["embedding"] for item in ordered)
+        return vectors
 
     async def chat_stream(self, messages: list[dict], *, model: str | None = None):
         async for item in self._stream_internal(messages, model=model, tools=None):

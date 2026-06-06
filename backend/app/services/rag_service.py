@@ -44,7 +44,7 @@ class RagService:
         return results
 
     async def _vector_search(self, db: AsyncSession, query: str, top_k: int) -> list[dict]:
-        vectors = await self.llm_client.embeddings([query])
+        vectors = await self.llm_client.embedding([query])
         query_vector = vectors[0]
         distance_expr = KnowledgeChunk.embedding.cosine_distance(query_vector)
         stmt = (

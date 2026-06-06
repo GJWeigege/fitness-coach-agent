@@ -26,6 +26,7 @@ from app.schemas.chat import (
 )
 from app.services.chat_service import ChatService
 from app.services.chat_session_service import ChatSessionService
+from app.services.benchmark_runner import is_benchmark_chat_session
 from app.services.rag_service import RagService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -58,7 +59,13 @@ def _enforce_chat_stream_rate_limit(http_request: Request, user: User) -> None:
     enforce_user_rate_limit(str(user.id), STREAM_RATE, scope="chat_stream")
 
 
+def _reject_benchmark_session(session: ChatSession) -> None:
+    if is_benchmark_chat_session(session):
+        raise HTTPException(status_code=403, detail="评测会话请在 Benchmark 页面查看。")
+
+
 def _require_session_read(session: ChatSession, user: User, permissions: set[str]) -> None:
+    _reject_benchmark_session(session)
     if "session:read:all" in permissions:
         return
     if "session:read:own" not in permissions:
@@ -68,6 +75,7 @@ def _require_session_read(session: ChatSession, user: User, permissions: set[str
 
 
 def _require_session_manage(session: ChatSession, user: User, permissions: set[str]) -> None:
+    _reject_benchmark_session(session)
     if "session:manage:all" in permissions:
         return
     if "session:manage:own" not in permissions:
@@ -205,6 +213,11 @@ async def send_chat(
     user: User = Depends(require_permissions("chat:send")),
 ) -> ChatSendResponse:
     _enforce_chat_stream_rate_limit(http_request, user)
+    if request.session_id is not None:
+        session = await db.get(ChatSession, request.session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="会话不存在。")
+        _reject_benchmark_session(session)
     service = _require_chat_service()
     result = await service.send_message(
         db=db,
@@ -220,9 +233,15 @@ async def send_chat(
 async def stream_chat(
     request: ChatSendRequest,
     http_request: Request,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permissions("chat:send")),
 ):
     _enforce_chat_stream_rate_limit(http_request, user)
+    if request.session_id is not None:
+        session = await db.get(ChatSession, request.session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="会话不存在。")
+        _reject_benchmark_session(session)
     service = _require_chat_service()
 
     async def event_generator():
@@ -267,6 +286,7 @@ async def message_feedback(
     session = await db.get(ChatSession, record.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在。")
+    _reject_benchmark_session(session)
     if "session:read:all" not in permissions and session.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权反馈该消息。")
     if record.role != "assistant":

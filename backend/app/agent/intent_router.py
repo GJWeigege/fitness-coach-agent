@@ -82,6 +82,9 @@ class CoachIntentRouter:
             )
             parsed = self._parse_json(result.content)
             if parsed:
+                parsed["prompt_tokens"] = result.prompt_tokens
+                parsed["completion_tokens"] = result.completion_tokens
+                parsed["model_name"] = result.model_name
                 return parsed
         except Exception as exc:
             logger.warning("coach_intent_router_llm_failed: %s", exc, exc_info=True)

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   createTrainingLog,
   fetchProfile,
@@ -69,7 +69,7 @@ export function ProfilePage() {
     setDietPreference(data.diet_preference ?? "");
   }
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError("");
@@ -82,11 +82,11 @@ export function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
 
   useEffect(() => {
     void loadData();
-  }, [token]);
+  }, [loadData]);
 
   async function onSaveProfile(event: FormEvent) {
     event.preventDefault();

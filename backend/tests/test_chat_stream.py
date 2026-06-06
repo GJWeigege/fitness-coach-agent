@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import Settings
-from app.db.models import ChatMessage, ChatSession, User
+from app.db.models import AgentRun, ChatMessage, ChatSession, LlmCall, User
 from app.services.chat_service import ChatService
 from app.services.rag_service import RagService
 from tests.coach_mocks import MockDashScopeClient
@@ -77,7 +77,7 @@ async def test_chat_stream_done_after_assistant_persisted(db_session, chat_strea
     events: list[dict] = []
     async for event in service.stream_message(
         db_session,
-        user_message="我想增肌",
+        user_message="我想力量训练增肌",
         user_id=user.id,
         session_id=session.id,
         use_rag=False,
@@ -98,6 +98,28 @@ async def test_chat_stream_done_after_assistant_persisted(db_session, chat_strea
     assert len(assistants) == 1
     assert assistants[0].content
     assert assistants[0].agent_run_id is not None
+    assert assistants[0].prompt_tokens == 20
+    assert assistants[0].completion_tokens == 10
+    assert assistants[0].total_tokens == 30
+
+    agent_run = await db_session.get(AgentRun, assistants[0].agent_run_id)
+    assert agent_run is not None
+    assert agent_run.prompt_tokens == 20
+    assert agent_run.completion_tokens == 10
+
+    llm_calls = list(
+        (
+            await db_session.scalars(
+                select(LlmCall).where(LlmCall.run_id == agent_run.id)
+            )
+        ).all()
+    )
+    assert len(llm_calls) >= 2
+    assert sum(c.prompt_tokens or 0 for c in llm_calls) == 20
+    assert sum(c.completion_tokens or 0 for c in llm_calls) == 10
+
+    planner_call = next(c for c in llm_calls if c.purpose == "planner")
+    assert planner_call.step_id is not None
 
 
 @pytest.mark.asyncio

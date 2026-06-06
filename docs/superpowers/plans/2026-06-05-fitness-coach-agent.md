@@ -54,7 +54,7 @@ M1 T-001→006  →  M2 T-010→012  →  M3 T-020→024
 → M9 T-080→083  →  M10 T-090→093  →  M11 T-102→104  →  M12 T-110→115
 ```
 
-Run full suite after each milestone: `cd backend && pytest -q` and `cd frontend && npm run build`.
+Run full suite after each milestone: `cd backend && pytest -q` and `cd frontend && pnpm run build`.
 
 ---
 
@@ -170,12 +170,12 @@ git commit -m "feat: backend skeleton with config and health endpoint"
 ### Task 3: T-003 Frontend skeleton
 
 **Files:**
-- Create: `frontend/` via `npm create vite@latest frontend -- --template react-ts`
+- Create: `frontend/` via `pnpm create vite@latest frontend -- --template react-ts`
 - Create: `frontend/src/layouts/MainLayout.tsx`, `frontend/src/router.tsx`, stub pages
 
 - [ ] **Step 1: Scaffold Vite project**
 - [ ] **Step 2: Add router + layout shell** (AuthPage, ChatPage placeholders)
-- [ ] **Step 3: Verify** — `cd frontend && npm install && npm run build`
+- [ ] **Step 3: Verify** — `cd frontend && pnpm install && pnpm run build`
 - [ ] **Step 4: Commit** — `feat: frontend vite skeleton with layout and routes`
 
 ---
@@ -719,7 +719,7 @@ case "replace":
 ## Final verification (design §10)
 
 - [ ] `cd backend && pytest -q` — all green
-- [ ] `cd frontend && npm run lint && npm run build`
+- [ ] `cd frontend && pnpm run lint && pnpm run build`
 - [ ] Manual §10.1 cases #1–#5 in browser
 - [ ] Benchmark ≥80 samples meets §3.10 thresholds
 - [ ] Confirm no tickets/handoff code paths exist: `rg -i "handoff|ticket" backend/app` → empty

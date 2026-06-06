@@ -3,15 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.guardrails import COACH_DISCLAIMER, CoachGuardrails
+from app.core.config import get_settings
 from app.db.models import AgentRun, AgentStep, BenchmarkResult, ChatMessage, ChatSession, User
 from app.services.chat_service import ChatService
+from app.services.faithfulness_judge import FaithfulnessJudge, FaithfulnessVerdict
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,8 @@ DEFAULT_DATASET_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "benchmark" / "coach_eval.jsonl"
 )
 BENCHMARK_USER_USERNAME = "coach_demo"
+BENCHMARK_SESSION_TITLE_PREFIX = "benchmark:"
+BENCHMARK_DATASET_DIR = Path(__file__).resolve().parents[2] / "data" / "benchmark"
 DISCLAIMER_MARKERS = ("仅供参考", COACH_DISCLAIMER[:12])
 REQUIRED_SAMPLE_FIELDS = frozenset({"id", "question", "expected_intent"})
 
@@ -48,17 +53,35 @@ class RunEvaluation:
     cited: bool
     tools_covered: bool | None
     safety_compliant: bool | None
+    faithfulness: bool | None
+    faithfulness_score: float | None
     passed: bool
     metrics: dict
+
+
+def is_benchmark_chat_session(session: ChatSession) -> bool:
+    title = session.title or ""
+    return title.startswith(BENCHMARK_SESSION_TITLE_PREFIX)
 
 
 def resolve_dataset_path(dataset_name: str) -> Path:
     if dataset_name == "coach_eval":
         return DEFAULT_DATASET_PATH
     candidate = Path(dataset_name)
-    if candidate.is_file():
-        return candidate
-    raise FileNotFoundError(f"benchmark dataset not found: {dataset_name}")
+    if ".." in candidate.parts:
+        raise FileNotFoundError(f"benchmark dataset not found: {dataset_name}")
+    if not candidate.is_absolute():
+        candidate = BENCHMARK_DATASET_DIR / candidate
+    try:
+        resolved = candidate.resolve(strict=True)
+        benchmark_root = BENCHMARK_DATASET_DIR.resolve()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"benchmark dataset not found: {dataset_name}") from exc
+    if benchmark_root not in resolved.parents and resolved != benchmark_root:
+        raise FileNotFoundError(f"benchmark dataset not found: {dataset_name}")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"benchmark dataset not found: {dataset_name}")
+    return resolved
 
 
 def parse_benchmark_sample(raw: dict) -> BenchmarkSample:
@@ -80,6 +103,27 @@ def parse_benchmark_sample(raw: dict) -> BenchmarkSample:
         must_include_disclaimer=bool(raw.get("must_include_disclaimer", False)),
         reference_answer=raw.get("reference_answer"),
     )
+
+
+def select_benchmark_samples(
+    samples: list[BenchmarkSample],
+    *,
+    limit: int | None = None,
+    sample_ids: list[str] | None = None,
+) -> list[BenchmarkSample]:
+    if sample_ids:
+        by_id = {sample.id: sample for sample in samples}
+        selected: list[BenchmarkSample] = []
+        for sample_id in sample_ids:
+            match = by_id.get(sample_id)
+            if match is None:
+                logger.warning("benchmark sample_id not found: %s", sample_id)
+                continue
+            selected.append(match)
+        return selected
+    if limit is not None:
+        return samples[:limit]
+    return samples
 
 
 def load_benchmark_dataset(path: Path | str | None = None) -> list[BenchmarkSample]:
@@ -180,6 +224,7 @@ def evaluate_sample_outcome(
     latency_ms: int | None,
     agent_run_id: uuid.UUID | None,
     guardrails: CoachGuardrails | None = None,
+    faithfulness_verdict: FaithfulnessVerdict | None = None,
 ) -> RunEvaluation:
     plan_agents = extract_plan_agents(steps)
     tool_names = extract_tool_names(steps)
@@ -206,12 +251,27 @@ def evaluate_sample_outcome(
     if sample.expected_plan_agents:
         checks.append(plan_recall is not None and plan_recall >= 1.0)
 
+    faithfulness: bool | None = None
+    faithfulness_score: float | None = None
+    if sample.reference_answer and faithfulness_verdict is not None:
+        if faithfulness_verdict.method != "skipped_no_reference":
+            faithfulness = faithfulness_verdict.faithful
+            faithfulness_score = faithfulness_verdict.score
+
+    if faithfulness is not None:
+        checks.append(faithfulness)
+
     metrics = {
         "intent_match": intent_match,
         "plan_agent_recall": plan_recall,
         "cited": cited if sample.must_cite else None,
         "tools_covered": tools_ok,
         "safety_compliant": safety_ok,
+        "faithfulness": faithfulness,
+        "faithfulness_score": faithfulness_score,
+        "faithfulness_method": (
+            faithfulness_verdict.method if faithfulness_verdict is not None else None
+        ),
         "latency_ms": latency_ms,
         "plan_agents": sorted(plan_agents),
         "tool_names": sorted(tool_names),
@@ -229,6 +289,8 @@ def evaluate_sample_outcome(
         cited=cited,
         tools_covered=tools_ok,
         safety_compliant=safety_ok,
+        faithfulness=faithfulness,
+        faithfulness_score=faithfulness_score,
         passed=all(checks),
         metrics=metrics,
     )
@@ -243,6 +305,7 @@ def aggregate_benchmark_metrics(evaluations: list[RunEvaluation]) -> dict:
             "citation_rate": None,
             "tool_recall": None,
             "safety_compliance": None,
+            "faithfulness": None,
             "latency_p95_ms": None,
             "recovery_latency_p95_ms": None,
             "passed_count": 0,
@@ -289,6 +352,13 @@ def aggregate_benchmark_metrics(evaluations: list[RunEvaluation]) -> dict:
         percentile(recovery_latencies, 95) if recovery_latencies else None
     )
 
+    faithfulness_samples = [e for e in evaluations if e.faithfulness is not None]
+    faithfulness_rate = (
+        sum(1 for e in faithfulness_samples if e.faithfulness) / len(faithfulness_samples)
+        if faithfulness_samples
+        else None
+    )
+
     return {
         "sample_count": len(evaluations),
         "intent_accuracy": round(intent_accuracy, 4),
@@ -296,6 +366,7 @@ def aggregate_benchmark_metrics(evaluations: list[RunEvaluation]) -> dict:
         "citation_rate": round(citation_rate, 4) if citation_rate is not None else None,
         "tool_recall": round(tool_recall, 4) if tool_recall is not None else None,
         "safety_compliance": round(safety_compliance, 4) if safety_compliance is not None else None,
+        "faithfulness": round(faithfulness_rate, 4) if faithfulness_rate is not None else None,
         "latency_p95_ms": latency_p95_ms,
         "recovery_latency_p95_ms": recovery_latency_p95_ms,
         "passed_count": sum(1 for e in evaluations if e.passed),
@@ -312,9 +383,28 @@ def percentile(sorted_values: list[int], p: int) -> int | None:
 
 
 class BenchmarkRunner:
-    def __init__(self, chat_service: ChatService) -> None:
+    def __init__(
+        self,
+        chat_service: ChatService,
+        *,
+        faithfulness_judge: FaithfulnessJudge | None = None,
+        enable_faithfulness_judge: bool = True,
+    ) -> None:
         self.chat_service = chat_service
         self.guardrails = CoachGuardrails()
+        self.faithfulness_judge = faithfulness_judge or FaithfulnessJudge(
+            chat_service.llm_client
+        )
+        self.enable_faithfulness_judge = enable_faithfulness_judge
+
+    async def _cleanup_benchmark_session(
+        self,
+        db: AsyncSession,
+        session_id: uuid.UUID,
+    ) -> None:
+        await db.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
+        await db.execute(delete(AgentRun).where(AgentRun.session_id == session_id))
+        await db.execute(delete(ChatSession).where(ChatSession.id == session_id))
 
     async def resolve_benchmark_user(self, db: AsyncSession) -> User:
         user = await db.scalar(select(User).where(User.username == BENCHMARK_USER_USERNAME))
@@ -329,9 +419,13 @@ class BenchmarkRunner:
         *,
         user_id: uuid.UUID,
     ) -> RunEvaluation:
-        session = ChatSession(user_id=user_id, title=f"benchmark:{sample.id}")
+        session = ChatSession(
+            user_id=user_id,
+            title=f"{BENCHMARK_SESSION_TITLE_PREFIX}{sample.id}",
+        )
         db.add(session)
         await db.flush()
+        session_id = session.id
 
         try:
             result = await self.chat_service.send_message(
@@ -342,6 +436,7 @@ class BenchmarkRunner:
             )
         except Exception:
             logger.exception("benchmark_sample_failed sample_id=%s", sample.id)
+            await self._cleanup_benchmark_session(db, session_id)
             return RunEvaluation(
                 sample_id=sample.id,
                 question=sample.question,
@@ -354,6 +449,8 @@ class BenchmarkRunner:
                 cited=False,
                 tools_covered=False if sample.must_include_tools else None,
                 safety_compliant=False if sample.must_include_disclaimer else None,
+                faithfulness=None,
+                faithfulness_score=None,
                 passed=False,
                 metrics={"error": True},
             )
@@ -385,7 +482,17 @@ class BenchmarkRunner:
         predicted_intent = agent_run.intent if agent_run else None
         latency_ms = agent_run.total_latency_ms if agent_run else None
 
-        return evaluate_sample_outcome(
+        faithfulness_verdict: FaithfulnessVerdict | None = None
+        if self.enable_faithfulness_judge and sample.reference_answer:
+            settings = get_settings()
+            faithfulness_verdict = await self.faithfulness_judge.evaluate(
+                question=sample.question,
+                reply=reply,
+                reference_answer=sample.reference_answer,
+                use_llm=settings.benchmark_faithfulness_use_llm,
+            )
+
+        evaluation = evaluate_sample_outcome(
             sample,
             predicted_intent=predicted_intent,
             citations=citations,
@@ -394,7 +501,10 @@ class BenchmarkRunner:
             latency_ms=latency_ms,
             agent_run_id=run_id,
             guardrails=self.guardrails,
+            faithfulness_verdict=faithfulness_verdict,
         )
+        await self._cleanup_benchmark_session(db, session_id)
+        return evaluation
 
     async def run_dataset(
         self,
@@ -402,12 +512,23 @@ class BenchmarkRunner:
         samples: list[BenchmarkSample],
         *,
         user_id: uuid.UUID | None = None,
+        should_cancel: Callable[[], bool | Awaitable[bool]] | None = None,
+        on_sample: Callable[[RunEvaluation], Awaitable[None]] | None = None,
     ) -> list[RunEvaluation]:
         if user_id is None:
             user_id = (await self.resolve_benchmark_user(db)).id
         evaluations: list[RunEvaluation] = []
         for sample in samples:
-            evaluations.append(await self.run_sample(db, sample, user_id=user_id))
+            if should_cancel is not None:
+                cancelled = should_cancel()
+                if isinstance(cancelled, Awaitable):
+                    cancelled = await cancelled
+                if cancelled:
+                    break
+            evaluation = await self.run_sample(db, sample, user_id=user_id)
+            evaluations.append(evaluation)
+            if on_sample is not None:
+                await on_sample(evaluation)
         return evaluations
 
 

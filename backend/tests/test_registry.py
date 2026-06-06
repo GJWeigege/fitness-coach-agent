@@ -16,7 +16,7 @@ def _vec(*head: float) -> list[float]:
 
 
 class MockLLM:
-    async def embeddings(self, texts: list[str]) -> list[list[float]]:
+    async def embedding(self, texts: list[str]) -> list[list[float]]:
         return [_vec(1.0) for _ in texts]
 
 

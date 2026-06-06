@@ -1,10 +1,15 @@
 from langchain_core.runnables import RunnableConfig
 
+import logging
+
 from app.agent.coach.nodes.build_llm_messages import build_llm_messages
 from app.agent.coach.nodes.safety_review import SAFETY_BLOCKED_TEMPLATE
 from app.agent.coach.state import CoachState
+from app.agent.coach.token_usage import track_llm_usage
 from app.core.config import get_settings
 from app.llm.dashscope_client import StreamDone
+
+logger = logging.getLogger(__name__)
 
 
 def _passthrough_answer(state: CoachState) -> str:
@@ -63,12 +68,29 @@ async def synthesize_node(state: CoachState, config: RunnableConfig) -> dict:
     messages.append({"role": "user", "content": merge_context})
 
     text = ""
+    stream_done: StreamDone | None = None
     async for chunk in llm.chat_stream(messages, model=settings.coach_answer_model):
         if isinstance(chunk, str):
             text += chunk
             if emit:
                 await emit("delta", {"content": chunk})
         elif isinstance(chunk, StreamDone):
+            stream_done = chunk
             break
+
+    if stream_done is not None:
+        await track_llm_usage(
+            conf,
+            run_id=state["run_id"],
+            purpose="synthesize",
+            model=stream_done.model_name or settings.coach_answer_model,
+            prompt_tokens=stream_done.prompt_tokens,
+            completion_tokens=stream_done.completion_tokens,
+        )
+    elif text:
+        logger.warning(
+            "synthesize_stream_missing_usage run_id=%s",
+            state.get("run_id"),
+        )
 
     return {"final_answer": text}

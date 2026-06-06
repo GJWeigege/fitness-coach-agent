@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from app.db.models import AgentRun, AgentStep
+from app.db.models import AgentRun, AgentStep, LlmCall
 from app.services.observability_service import ObservabilityService
 
 
@@ -77,3 +77,29 @@ async def test_observability_list_runs_ordered(db_session):
     fetched = await svc.get_run(db_session, run_a.id)
     assert fetched is not None
     assert fetched.trace_id == "a"
+
+
+@pytest.mark.asyncio
+async def test_observability_record_llm_call(db_session):
+    svc = ObservabilityService()
+    session_id = uuid.uuid4()
+    run = await svc.create_run(
+        db_session,
+        session_id=session_id,
+        user_message_id=None,
+        trace_id="trace-llm",
+    )
+
+    record = await svc.record_llm_call(
+        db_session,
+        run.id,
+        purpose="planner",
+        model="qwen-plus",
+        prompt_tokens=100,
+        completion_tokens=40,
+        latency_ms=88,
+    )
+    assert isinstance(record, LlmCall)
+    assert record.run_id == run.id
+    assert record.prompt_tokens == 100
+    assert record.completion_tokens == 40

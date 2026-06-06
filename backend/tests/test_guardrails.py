@@ -2,6 +2,7 @@ from app.agent.guardrails import (
     COACH_DISCLAIMER,
     FALLBACK_NO_KNOWLEDGE,
     CoachGuardrails,
+    collect_rag_citations,
     load_banned_diagnosis_terms,
 )
 
@@ -22,6 +23,68 @@ def test_citation_guard_not_searched_unchanged():
     g = CoachGuardrails()
     text = "请先补充您的训练经验。"
     assert g.apply_citation_guard("training", [], text, knowledge_searched=False) == text
+
+
+def test_citation_guard_hybrid_rrf_scores_valid():
+    g = CoachGuardrails()
+    citations = [
+        {"score": 0.164, "content": "新手每周 3 次全身训练", "source": "hybrid"},
+        {"score": 0.161, "content": "周期化原则", "source": "hybrid"},
+    ]
+    text = "根据知识库制定一周力量计划。"
+    assert g.apply_citation_guard("training", citations, text, knowledge_searched=True) == text
+
+
+def test_collect_rag_citations_from_tool_calls():
+    citations = collect_rag_citations(
+        rag_citations=[],
+        tool_calls=[
+            {
+                "name": "get_user_profile",
+                "status": "ok",
+                "result": {"profile": {}},
+            },
+            {
+                "name": "knowledge_search",
+                "status": "ok",
+                "result": {
+                    "citations": [
+                        {"chunk_id": "c1", "content": "训练计划", "score": 0.16, "source": "hybrid"},
+                    ]
+                },
+            },
+        ],
+    )
+    assert len(citations) == 1
+    assert citations[0]["chunk_id"] == "c1"
+
+
+def test_apply_guardrails_keeps_answer_when_tool_calls_have_citations():
+    g = CoachGuardrails()
+    answer = "一周力量训练：周一深蹲，周三卧推。"
+    citations = collect_rag_citations(
+        tool_calls=[
+            {
+                "name": "knowledge_search",
+                "status": "ok",
+                "result": {
+                    "citations": [
+                        {"chunk_id": "c1", "content": "新手训练", "score": 0.16, "source": "hybrid"},
+                    ]
+                },
+            }
+        ]
+    )
+    final, modified = g.apply_guardrails(
+        answer,
+        intent="training",
+        citations=citations,
+        knowledge_searched=True,
+    )
+    assert final != FALLBACK_NO_KNOWLEDGE
+    assert final.startswith(answer)
+    assert COACH_DISCLAIMER in final
+    assert modified is True
 
 
 def test_citation_guard_high_score():

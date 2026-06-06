@@ -1,6 +1,7 @@
 import { useKnowledge } from "../hooks/useKnowledge";
 import { Button } from "../components/ui/Button";
-import { Badge, statusVariant } from "../components/ui/Badge";
+import { Badge } from "../components/ui/Badge";
+import { statusVariant } from "../components/ui/badgeVariants";
 import { BookIcon } from "../components/ui/Icons";
 import { EmptyState } from "../components/ui/EmptyState";
 
