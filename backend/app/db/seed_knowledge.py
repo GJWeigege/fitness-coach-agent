@@ -15,15 +15,6 @@ logger = logging.getLogger(__name__)
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "data" / "knowledge"
 
-COACH_KNOWLEDGE_FILES: tuple[str, ...] = (
-    "训练计划与周期化.md",
-    "营养与恢复.md",
-    "损伤预防与安全.md",
-    "睡眠与过度训练.md",
-    "常见问题FAQ.md",
-)
-
-
 class EmbeddingClient(Protocol):
     async def embedding(self, texts: list[str]) -> list[list[float]]: ...
 
@@ -36,8 +27,7 @@ def _file_content_hash(file_path: Path) -> str:
 def _resolve_knowledge_files() -> list[Path]:
     if not KNOWLEDGE_DIR.is_dir():
         return []
-    by_name = {path.name: path for path in KNOWLEDGE_DIR.glob("*.md")}
-    return [by_name[name] for name in COACH_KNOWLEDGE_FILES if name in by_name]
+    return sorted(KNOWLEDGE_DIR.glob("*.md"), key=lambda p: p.name)
 
 
 def _create_ingest_service(llm_client: EmbeddingClient | None) -> IngestService | None:

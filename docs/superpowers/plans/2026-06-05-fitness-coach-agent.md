@@ -1,14 +1,16 @@
 # Fitness Coach Agent — Implementation Plan
 
+> **路径说明（2026-06-06）**：设计规格现为 `docs/specs/COACH_AGENT_REDESIGN.md`；SSE/架构等见 `docs/reference/`。总导航：[docs/INDEX.md](../../INDEX.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the `fitness-coach-agent` full-stack application per `docs/COACH_AGENT_REDESIGN.md` v1.8 — LangGraph multi-agent coach with Planning, CoT, parallel recovery, RAG+Graph, benchmark, and SSE contract (passthrough `replace` / merge `delta`).
+**Goal:** Build the `fitness-coach-agent` full-stack application per `docs/specs/COACH_AGENT_REDESIGN.md` v1.8 — LangGraph multi-agent coach with Planning, CoT, parallel recovery, RAG+Graph, benchmark, and SSE contract (passthrough `replace` / merge `delta`).
 
 **Architecture:** FastAPI + async SQLAlchemy + pgvector backend; React/Vite frontend. `ChatService` owns messages and `done`; `CoachGraphOrchestrator` owns LangGraph runs and SSE through `synthesize`/`apply_guardrails`. Copy patterns from sibling repo `../customer-service-agent` but **exclude** handoff, tickets, orders, Legacy orchestrator.
 
 **Tech Stack:** Python 3.12+, FastAPI, SQLAlchemy 2 async, Alembic, pgvector, LangGraph, DashScope API, pytest, React 18, Vite, TypeScript.
 
-**Spec:** `docs/COACH_AGENT_REDESIGN.md` (v1.8) — authoritative for config defaults, SSE §3.6.1, tasks T-001…T-115.
+**Spec:** `docs/specs/COACH_AGENT_REDESIGN.md` (v1.8) — authoritative for config defaults, SSE §3.6.1, tasks T-001…T-115.
 
 **Reference repo:** `e:/work/D migrate/files/myself/projects/AI/customer-service-agent` — copy/adapt files listed per task; never copy CS knowledge markdown or business tools.
 
