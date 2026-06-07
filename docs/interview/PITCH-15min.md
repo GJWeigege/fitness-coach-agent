@@ -61,13 +61,19 @@
 
 ---
 
-## Part 4 — Live Demo 话术（3 min）
+## Part 4 — Live Demo 话术（5 min）
+
+> 预录演示视频见 [demo-videos/](demo-videos/)（`cd scripts/demo && npm run record` 可重录）  
+> 完整流程：Profile → Chat/Multi-Agent → Knowledge → Benchmark → Agent Runs
 
 1. 登录 `coach_demo` / `Demo@123456`  
-2. 问：「我想增肌，膝盖有旧伤，请给训练和饮食建议。」  
-3. 指 **AgentStepsPanel**：routing → planning → training_agent ∥ nutrition_agent → synthesizing  
-4. 指 **citations** 气泡底部引用  
-5. admin 账号打开 **Agent Runs** 看 llm_calls token  
+2. **Profile**：填写增肌目标、左膝旧伤、训练记录——说明个性化 tool 数据来源  
+3. **Chat** 问：「我想增肌，膝盖有旧伤，请给训练和饮食建议。」  
+4. 指 **AgentStepsPanel**：routing → planning → training_agent ∥ nutrition_agent → synthesizing  
+5. 指 **citations** 气泡底部引用  
+6. 切换 `admin_demo`，**Knowledge** 展示 seed 文档与「重建索引」  
+7. **Benchmark** 打开历史 completed run，指 Intent / Citation / Faithfulness 指标  
+8. **Agent Runs** 看 llm_calls token 与 step timeline  
 
 ---
 

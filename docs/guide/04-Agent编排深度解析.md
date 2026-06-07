@@ -1,10 +1,12 @@
 # 04 · Agent 编排深度解析
 
-| 元信息 | 内容 |
-|--------|------|
-| **预计阅读** | 25 分钟 |
-| **前置知识** | [03-系统架构与分层](./03-系统架构与分层.md)、LangGraph 基础 |
+
+| 元信息        | 内容                                                                 |
+| ---------- | ------------------------------------------------------------------ |
+| **预计阅读**   | 25 分钟                                                              |
+| **前置知识**   | [03-系统架构与分层](./03-系统架构与分层.md)、LangGraph 基础                         |
 | **相关 ADR** | [COACH_AGENT_REDESIGN](../specs/COACH_AGENT_REDESIGN.md) §3.1、§3.6 |
+
 
 ---
 
@@ -61,6 +63,8 @@ flowchart TD
     PT --> END((END))
 ```
 
+
+
 **关键设计**：执行路径在 `plan_execute` 之后分叉；`knowledge_prefetch` 仅服务 `unknown` 意图；所有路径在 `safety_review` 汇合。
 
 ---
@@ -69,15 +73,17 @@ flowchart TD
 
 `backend/app/agent/coach/state.py`：
 
-| 字段 | 类型 | Reducer | 含义 |
-|------|------|---------|------|
-| `cot_traces` | `dict[str,str]` | **merge_dicts** | planner/sub_agent/chitchat 推理链 |
-| `agent_outputs` | `dict[str,str]` | **merge_dicts** | 各 agent 最终文本 |
-| `tool_calls` | `list[dict]` | **merge_lists** | 工具调用审计 |
-| `rag_citations` | `list` | 覆盖 | prefetch + tool 合并后在 guardrails |
-| `execution_plan` | `dict` | 覆盖 | Pydantic `ExecutionPlan` dump |
-| `safety_blocked` | `bool` | 覆盖 | 安全审查结果 |
-| `final_answer` | `str` | 覆盖 | synthesize → guardrails 后答案 |
+
+| 字段               | 类型              | Reducer         | 含义                              |
+| ---------------- | --------------- | --------------- | ------------------------------- |
+| `cot_traces`     | `dict[str,str]` | **merge_dicts** | planner/sub_agent/chitchat 推理链  |
+| `agent_outputs`  | `dict[str,str]` | **merge_dicts** | 各 agent 最终文本                    |
+| `tool_calls`     | `list[dict]`    | **merge_lists** | 工具调用审计                          |
+| `rag_citations`  | `list`          | 覆盖              | prefetch + tool 合并后在 guardrails |
+| `execution_plan` | `dict`          | 覆盖              | Pydantic `ExecutionPlan` dump   |
+| `safety_blocked` | `bool`          | 覆盖              | 安全审查结果                          |
+| `final_answer`   | `str`           | 覆盖              | synthesize → guardrails 后答案     |
+
 
 **并行 sub_agent**：LangGraph `Send` 启动多个 `sub_agent` 实例，各自返回 partial update；reducer **合并** `agent_outputs`、`tool_calls`、`cot_traces`，而非覆盖。
 
@@ -136,15 +142,17 @@ flowchart TD
 
 - **文件**：`nodes/dispatch_sub_agents.py`
 
-| 条件 | 下一节点 |
-|------|----------|
-| `intent==chitchat` | `coach_chitchat` |
-| `intent==unknown` | `knowledge_prefetch` |
-| tasks 为空且有 active_agents |  synthetic tasks 或 chitchat |
-| `PARALLEL_SUB_AGENTS_ENABLED=false` 且 tasks>1 | `serial_dispatch` |
-| tasks==1 | `Send("sub_agent", payload)` |
-| tasks>1 且 parallel_group 一致 | **多个 Send**（真并行） |
-| 否则 | 单个 Send（第一个 task） |
+
+| 条件                                            | 下一节点                         |
+| --------------------------------------------- | ---------------------------- |
+| `intent==chitchat`                            | `coach_chitchat`             |
+| `intent==unknown`                             | `knowledge_prefetch`         |
+| tasks 为空且有 active_agents                      | synthetic tasks 或 chitchat   |
+| `PARALLEL_SUB_AGENTS_ENABLED=false` 且 tasks>1 | `serial_dispatch`            |
+| tasks==1                                      | `Send("sub_agent", payload)` |
+| tasks>1 且 parallel_group 一致                   | **多个 Send**（真并行）             |
+| 否则                                            | 单个 Send（第一个 task）            |
+
 
 `run_meta["parallel_agents_used"]` 供 Benchmark/Observability 记录。
 
@@ -194,11 +202,13 @@ SSE（`AGENT_ENABLE_THINKING_STEPS`）：
 
 - **文件**：`nodes/synthesize.py`
 
-| 场景 | 行为 | SSE |
-|------|------|-----|
-| `safety_blocked` | 固定模板 | `replace` |
-| chitchat / unknown / 单 agent 输出 | `_passthrough_answer` | `replace` |
-| ≥2 active_agents 且 ≥2 outputs | LLM 合并 | **`delta`** 流式 |
+
+| 场景                              | 行为                    | SSE            |
+| ------------------------------- | --------------------- | -------------- |
+| `safety_blocked`                | 固定模板                  | `replace`      |
+| chitchat / unknown / 单 agent 输出 | `_passthrough_answer` | `replace`      |
+| ≥2 active_agents 且 ≥2 outputs   | LLM 合并                | `**delta`** 流式 |
+
 
 合并 prompt 含 `execution_plan.constraints` 与各 agent 输出块。
 
@@ -279,15 +289,17 @@ ChatService.stream_message
 
 `CoachToolRegistry.build_default`（`tools/registry.py`）：
 
-| 工具 | 文件 | 典型调用方 |
-|------|------|------------|
-| `knowledge_search` | `knowledge.py` | sub_agent、prefetch |
-| `check_contraindication` | `contraindication.py` | safety/training |
-| `get_user_profile` | `profile.py` | profile agent |
-| `log_training` | `training_log.py` | training |
-| `calculate_macros` | `macros.py` | nutrition |
-| `suggest_alternatives` | `alternatives.py` | training |
-| `graph_lookup` | `graph_lookup.py` | 需 `GRAPH_RAG_ENABLED` |
+
+| 工具                       | 文件                    | 典型调用方                 |
+| ------------------------ | --------------------- | --------------------- |
+| `knowledge_search`       | `knowledge.py`        | sub_agent、prefetch    |
+| `check_contraindication` | `contraindication.py` | safety/training       |
+| `get_user_profile`       | `profile.py`          | profile agent         |
+| `log_training`           | `training_log.py`     | training              |
+| `calculate_macros`       | `macros.py`           | nutrition             |
+| `suggest_alternatives`   | `alternatives.py`     | training              |
+| `graph_lookup`           | `graph_lookup.py`     | 需 `GRAPH_RAG_ENABLED` |
+
 
 `ToolContext` 携带：`db, user_id, session_id, message_id, run_id, use_rag`。
 
@@ -332,13 +344,15 @@ ChatService.stream_message
 
 ## 8. 降级与 resilience
 
-| 场景 | 表现 |
-|------|------|
-| Planner JSON 无效 | fallback plan + `status=degraded` |
-| sub_agent 工具步耗尽 | 用已有 accumulated 文本 + degraded |
-| final_answer 空 | Orchestrator `FALLBACK_TEMPLATE` + degraded |
-| Graph enrich 异常 | 跳过 graph_context，主链路继续 |
-| LLM 异常 | SSE error + run failed |
+
+| 场景              | 表现                                          |
+| --------------- | ------------------------------------------- |
+| Planner JSON 无效 | fallback plan + `status=degraded`           |
+| sub_agent 工具步耗尽 | 用已有 accumulated 文本 + degraded               |
+| final_answer 空  | Orchestrator `FALLBACK_TEMPLATE` + degraded |
+| Graph enrich 异常 | 跳过 graph_context，主链路继续                      |
+| LLM 异常          | SSE error + run failed                      |
+
 
 测试：`test_degraded.py`、`test_resilience.py`、`test_parallel_recovery.py`。
 
@@ -354,21 +368,23 @@ ChatService.stream_message
 
 ## 代码锚点表
 
-| 路径 | 职责 |
-|------|------|
-| `backend/app/agent/coach/graph.py` | 图定义 |
-| `backend/app/agent/coach/state.py` | CoachState + reducer |
-| `backend/app/agent/coach/orchestrator.py` | 运行时、SSE 桥 |
-| `backend/app/agent/coach/nodes/dispatch_sub_agents.py` | 条件路由 Send |
-| `backend/app/agent/coach/nodes/sub_agent.py` | ReAct 主循环 |
-| `backend/app/agent/coach/nodes/synthesize.py` | 合并/透传 |
-| `backend/app/agent/coach/nodes/safety_review.py` | 安全层 |
-| `backend/app/agent/coach/nodes/build_llm_messages.py` | 记忆+画像+图谱 prompt |
-| `backend/app/agent/coach/plan_schema.py` | ExecutionPlan 校验 |
-| `backend/app/agent/intent_router.py` | 意图路由 |
-| `backend/app/agent/tools/registry.py` | 工具注册 |
-| `backend/app/services/chat_service.py` | 持久化边界 |
-| `frontend/src/components/chat/AgentStepsPanel.tsx` | step 展示 |
+
+| 路径                                                     | 职责                   |
+| ------------------------------------------------------ | -------------------- |
+| `backend/app/agent/coach/graph.py`                     | 图定义                  |
+| `backend/app/agent/coach/state.py`                     | CoachState + reducer |
+| `backend/app/agent/coach/orchestrator.py`              | 运行时、SSE 桥            |
+| `backend/app/agent/coach/nodes/dispatch_sub_agents.py` | 条件路由 Send            |
+| `backend/app/agent/coach/nodes/sub_agent.py`           | ReAct 主循环            |
+| `backend/app/agent/coach/nodes/synthesize.py`          | 合并/透传                |
+| `backend/app/agent/coach/nodes/safety_review.py`       | 安全层                  |
+| `backend/app/agent/coach/nodes/build_llm_messages.py`  | 记忆+画像+图谱 prompt      |
+| `backend/app/agent/coach/plan_schema.py`               | ExecutionPlan 校验     |
+| `backend/app/agent/intent_router.py`                   | 意图路由                 |
+| `backend/app/agent/tools/registry.py`                  | 工具注册                 |
+| `backend/app/services/chat_service.py`                 | 持久化边界                |
+| `frontend/src/components/chat/AgentStepsPanel.tsx`     | step 展示              |
+
 
 ---
 
@@ -379,6 +395,7 @@ ChatService.stream_message
 **答**：未知意图时 active_agents 为空，planner 难以派 task；先检索再 chitchat 可低成本 grounded 回答。
 
 **追问链**：
+
 - *追问*：prefetch 和 tool 内 knowledge_search 重复吗？→ prefetch 预热 state.citations/graph；sub_agent 仍可再搜更细 query。
 
 ### Q2：Send 并行如何做 state merge？
@@ -386,6 +403,7 @@ ChatService.stream_message
 **答**：LangGraph 对 Annotated reducer 字段合并；每个 sub_agent 只写自己的 `agent_key` 到 `agent_outputs`。
 
 **追问链**：
+
 - *追问*：并行时 DB session 安全吗？→ 同 async session，工具调用 sequential per agent；并行 agent 各用只读检索为主。
 
 ### Q3：synthesize 为什么有时不调用 LLM？
@@ -429,3 +447,4 @@ ChatService.stream_message
 - [05-RAG与Graph-RAG](./05-RAG与Graph-RAG.md) — 检索链路
 - [06-记忆与长上下文](./06-记忆与长上下文.md) — build_llm_messages 记忆
 - [LLM_ARCHITECTURE](../reference/LLM_ARCHITECTURE.md) — Planning/CoT 理论
+

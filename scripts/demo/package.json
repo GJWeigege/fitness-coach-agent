@@ -1,0 +1,12 @@
+{
+  "name": "fitness-coach-demo-recorder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "record": "node record_interview_demo.mjs",
+    "install-browser": "playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.52.0"
+  }
+}

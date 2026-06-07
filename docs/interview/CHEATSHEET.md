@@ -15,6 +15,7 @@
 | 测试文件 | **49** |
 | RBAC 角色 | **3**（user, kb_editor, admin） |
 | Demo 密码 | **Demo@123456** |
+| 预录演示视频 | [demo-videos/](demo-videos/)（Profile→Chat→Knowledge→Benchmark→Agent Runs） |
 
 ## 关键路径
 
