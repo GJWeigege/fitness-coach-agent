@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class ChatSendRequest(BaseModel):
@@ -27,6 +27,28 @@ class RenameSessionRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
 
+class MessageStepItem(BaseModel):
+    phase: str
+    summary: str
+    step_index: int | None = None
+    detail: dict | None = None
+
+
+def parse_message_step_items(raw_steps: list | None) -> list[MessageStepItem]:
+    """Parse persisted step rows; skip malformed entries instead of raising."""
+    if not isinstance(raw_steps, list):
+        return []
+    items: list[MessageStepItem] = []
+    for step in raw_steps:
+        if not isinstance(step, dict):
+            continue
+        try:
+            items.append(MessageStepItem.model_validate(step))
+        except ValidationError:
+            continue
+    return items
+
+
 class MessageItem(BaseModel):
     id: uuid.UUID
     role: str
@@ -35,6 +57,11 @@ class MessageItem(BaseModel):
     citations: list[dict] | None = None
     agent_run_id: uuid.UUID | None = None
     feedback: str | None = None
+    steps: list[MessageStepItem] | None = None
+    run_status: str | None = None
+    step_count: int | None = None
+    latency_ms: int | None = None
+    intent: str | None = None
 
 
 class MessageFeedbackRequest(BaseModel):

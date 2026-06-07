@@ -1,4 +1,3 @@
-import time
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -13,6 +12,33 @@ from app.db.models import ChatMessage, ChatSession
 from app.llm.dashscope_client import DashScopeClient
 from app.services.memory_service import MemoryService
 from app.services.rag_service import RagService
+
+
+def collect_agent_step(event: dict) -> dict | None:
+    event_type = event.get("type")
+    if event_type == "step":
+        phase = event.get("phase")
+        summary = event.get("summary")
+        if not phase or not summary:
+            return None
+        step: dict = {"phase": phase, "summary": summary}
+        if event.get("step_index") is not None:
+            step["step_index"] = event["step_index"]
+        if event.get("detail"):
+            step["detail"] = event["detail"]
+        return step
+    if event_type == "tool_call":
+        tool = event.get("tool") or "tool"
+        return {
+            "phase": "tool_call",
+            "summary": f"调用 {tool}",
+        }
+    if event_type == "tool_result":
+        return {
+            "phase": "tool_result",
+            "summary": event.get("output_preview") or "工具返回",
+        }
+    return None
 
 
 class ChatService:
@@ -115,8 +141,31 @@ class ChatService:
         *,
         session: ChatSession,
         result: CoachRunResult,
+        agent_steps: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         self._touch_session(session)
+        steps = list(agent_steps or [])
+
+        memory_summary_updated = False
+        summary_result = await self.memory_service.maybe_update_summary(
+            db, session.id, self.llm_client
+        )
+        if summary_result.updated:
+            memory_summary_updated = True
+            await self._apply_summary_usage(db, result=result, summary_result=summary_result)
+
+        if self.settings.agent_enable_thinking_steps:
+            steps.append(
+                {
+                    "phase": "memory_summary",
+                    "summary": (
+                        "已更新会话摘要。"
+                        if memory_summary_updated
+                        else "正在整理会话摘要…"
+                    ),
+                }
+            )
+
         assistant_record = ChatMessage(
             session_id=session.id,
             role="assistant",
@@ -127,37 +176,15 @@ class ChatService:
             total_tokens=combined_total_tokens(result.prompt_tokens, result.completion_tokens),
             latency_ms=result.total_latency_ms,
             retrieved_chunks={"items": result.citations},
+            agent_steps={"items": steps} if steps else None,
             agent_run_id=result.run_id,
         )
         db.add(assistant_record)
         await db.commit()
         await db.refresh(assistant_record)
 
-        memory_summary_updated = False
-        summary_result = await self.memory_service.maybe_update_summary(
-            db, session.id, self.llm_client
-        )
-        if summary_result.updated:
-            memory_summary_updated = True
-            await self._apply_summary_usage(db, result=result, summary_result=summary_result)
-            assistant_record.prompt_tokens = result.prompt_tokens
-            assistant_record.completion_tokens = result.completion_tokens
-            assistant_record.total_tokens = combined_total_tokens(
-                result.prompt_tokens,
-                result.completion_tokens,
-            )
-            await db.commit()
-
-        if self.settings.agent_enable_thinking_steps:
-            yield {
-                "type": "step",
-                "phase": "memory_summary",
-                "summary": (
-                    "已更新会话摘要。"
-                    if memory_summary_updated
-                    else "正在整理会话摘要…"
-                ),
-            }
+        if self.settings.agent_enable_thinking_steps and steps:
+            yield {"type": "step", **steps[-1]}
 
         await self.orchestrator.finalize_run(
             db,
@@ -179,21 +206,6 @@ class ChatService:
             "assistant_message_id": str(assistant_record.id),
         }
 
-    async def _complete_turn(
-        self,
-        db: AsyncSession,
-        *,
-        session: ChatSession,
-        result: CoachRunResult,
-    ) -> dict:
-        done_evt: dict | None = None
-        async for event in self._complete_turn_events(db, session=session, result=result):
-            if event.get("type") == "done":
-                done_evt = event
-        if done_evt is None:
-            raise RuntimeError("教练回合未完成。")
-        return done_evt
-
     async def stream_message(
         self,
         db: AsyncSession,
@@ -213,6 +225,7 @@ class ChatService:
         await db.refresh(session)
 
         result: CoachRunResult | None = None
+        agent_steps: list[dict] = []
         async for event in self.orchestrator.stream_turn(
             db=db,
             session=session,
@@ -226,13 +239,21 @@ class ChatService:
             if event.get("type") == "error":
                 yield event
                 return
+            step = collect_agent_step(event)
+            if step is not None:
+                agent_steps.append(step)
             yield event
 
         if result is None:
             yield {"type": "error", "message": "教练未完成响应，请重试。"}
             return
 
-        async for event in self._complete_turn_events(db, session=session, result=result):
+        async for event in self._complete_turn_events(
+            db,
+            session=session,
+            result=result,
+            agent_steps=agent_steps,
+        ):
             yield event
 
     async def send_message(
@@ -252,6 +273,7 @@ class ChatService:
         chunks: list[str] = []
         citations: list[dict] = []
         result: CoachRunResult | None = None
+        agent_steps: list[dict] = []
 
         async for event in self.orchestrator.stream_turn(
             db=db,
@@ -271,11 +293,25 @@ class ChatService:
                 result = self._coach_result_from_event(event)
             elif event_type == "error":
                 raise HTTPException(status_code=400, detail=event.get("message", "请求失败"))
+            else:
+                step = collect_agent_step(event)
+                if step is not None:
+                    agent_steps.append(step)
 
         if result is None:
             raise HTTPException(status_code=500, detail="教练未完成响应，请重试。")
 
-        done_evt = await self._complete_turn(db, session=session, result=result)
+        done_evt: dict | None = None
+        async for event in self._complete_turn_events(
+            db,
+            session=session,
+            result=result,
+            agent_steps=agent_steps,
+        ):
+            if event.get("type") == "done":
+                done_evt = event
+        if done_evt is None:
+            raise RuntimeError("教练回合未完成。")
         reply = result.final_answer or "".join(chunks)
         return {
             "session_id": session.id,

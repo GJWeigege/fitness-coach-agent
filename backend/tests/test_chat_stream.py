@@ -154,3 +154,72 @@ async def test_chat_stream_single_agent_no_delta(db_session, chat_stream_setting
     assert "delta" not in public_types
     assert "replace" in public_types
     assert public_types[-1] == "done"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_persists_agent_steps(db_session, monkeypatch):
+    settings = Settings(
+        dashscope_api_key="test-key",
+        sub_agent_max_tool_steps=4,
+        cot_enabled=False,
+        parallel_sub_agents_enabled=True,
+        max_sub_agents_per_turn=2,
+        memory_max_turns=8,
+        memory_max_prompt_tokens=12000,
+        long_context_mode="summary",
+        graph_rag_enabled=False,
+        agent_enable_thinking_steps=True,
+        memory_summary_trigger_turns=999,
+    )
+    monkeypatch.setattr("app.core.config.get_settings", lambda: settings)
+    for mod in (
+        "app.services.chat_service",
+        "app.agent.coach.orchestrator",
+        "app.agent.coach.nodes.sub_agent",
+        "app.agent.coach.nodes.plan_execute",
+        "app.agent.coach.nodes.dispatch_sub_agents",
+        "app.agent.coach.nodes.synthesize",
+        "app.agent.tools.registry",
+        "app.services.memory_service",
+    ):
+        monkeypatch.setattr(f"{mod}.get_settings", lambda: settings)
+
+    user, session = await _new_session(db_session)
+    planner_plan = json.dumps(
+        {
+            "tasks": [{"agent": "training", "goal": "增肌"}],
+            "constraints": [],
+            "estimated_tools": [],
+        },
+        ensure_ascii=False,
+    )
+    llm = MockDashScopeClient(
+        chat_responses=[planner_plan],
+        tool_stream_chunks=["训练建议正文。"],
+        stream_chunks=["训练建议正文。"],
+    )
+    service = _chat_service(llm)
+
+    async for _event in service.stream_message(
+        db_session,
+        user_message="我想力量训练增肌",
+        user_id=user.id,
+        session_id=session.id,
+        use_rag=False,
+    ):
+        pass
+
+    assistants = list(
+        (
+            await db_session.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session.id, ChatMessage.role == "assistant")
+            )
+        ).all()
+    )
+    assert len(assistants) == 1
+    assert assistants[0].agent_steps is not None
+    persisted = assistants[0].agent_steps["items"]
+    assert isinstance(persisted, list)
+    assert len(persisted) >= 1
+    assert any(step.get("phase") == "memory_summary" for step in persisted)

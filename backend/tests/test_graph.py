@@ -112,6 +112,8 @@ async def test_seed_demo_graph_creates_entities_and_edges(db_session, graph_sett
     edge_count = len((await db_session.scalars(select(GraphEdge))).all())
     assert entity_count == len(COACH_GRAPH_ENTITIES)
     assert edge_count == len(COACH_GRAPH_EDGES)
+    assert len(COACH_GRAPH_ENTITIES) >= 30
+    assert len(COACH_GRAPH_EDGES) >= 40
 
 
 @pytest.mark.asyncio

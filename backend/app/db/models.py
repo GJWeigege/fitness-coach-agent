@@ -82,6 +82,7 @@ class ChatMessage(Base):
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retrieved_chunks: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    agent_steps: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     agent_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     feedback: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

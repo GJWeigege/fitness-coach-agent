@@ -25,10 +25,21 @@ function appendStep(steps: AgentStepEvent[], evt: StreamEvent): AgentStepEvent[]
 }
 
 function hydrateMessages(loaded: Awaited<ReturnType<typeof fetchSessionMessages>>["messages"]): LocalMessage[] {
-  return loaded.map((m) => ({
-    ...m,
-    citations: m.citations,
-  }));
+  return loaded.map((m) => {
+    const steps = m.steps || [];
+    const routingStep = steps.find((step) => step.phase === "routing");
+    const routingIntent = routingStep?.detail?.intent;
+    return {
+      ...m,
+      citations: m.citations,
+      steps,
+      runId: m.agent_run_id,
+      runStatus: m.run_status ?? undefined,
+      intent: m.intent ?? (routingIntent ? String(routingIntent) : undefined),
+      agent_trace_summary:
+        m.step_count != null ? `agent · ${m.step_count} 步 · ${m.latency_ms || 0}ms` : undefined,
+    };
+  });
 }
 
 function updateAssistant(

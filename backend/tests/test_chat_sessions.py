@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rate_limit import RateLimitRule
-from app.db.models import ChatMessage, ChatSession
+from app.db.models import AgentRun, AgentStep, ChatMessage, ChatSession
 from tests.test_auth import auth_headers, bootstrap_admin
 
 
@@ -184,6 +184,144 @@ async def test_list_session_messages(client: AsyncClient, db_session: AsyncSessi
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][1]["role"] == "assistant"
     assert body["messages"][1]["citations"][0]["content"] == "增肌知识"
+
+
+@pytest.mark.asyncio
+async def test_list_session_messages_includes_persisted_agent_steps(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user = await register_user(client, "steps_user")
+    headers = auth_headers(user["access_token"])
+    created = await client.post("/chat/sessions", headers=headers)
+    session_id = uuid.UUID(created.json()["id"])
+    run_id = uuid.uuid4()
+
+    db_session.add(ChatMessage(session_id=session_id, role="user", content="如何增肌？"))
+    db_session.add(
+        ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content="建议渐进超负荷训练。",
+            agent_run_id=run_id,
+            agent_steps={
+                "items": [
+                    {"phase": "routing", "summary": "正在识别用户意图…"},
+                    {"phase": "planning", "summary": "正在制定执行计划…"},
+                ]
+            },
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/chat/sessions/{session_id}/messages", headers=headers)
+    assert response.status_code == 200
+    assistant = response.json()["messages"][1]
+    assert len(assistant["steps"]) == 2
+    assert assistant["steps"][0]["phase"] == "routing"
+    assert assistant["steps"][1]["phase"] == "planning"
+
+
+@pytest.mark.asyncio
+async def test_list_session_messages_falls_back_to_agent_run_steps(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user = await register_user(client, "fallback_steps_user")
+    headers = auth_headers(user["access_token"])
+    created = await client.post("/chat/sessions", headers=headers)
+    session_id = uuid.UUID(created.json()["id"])
+    run_id = uuid.uuid4()
+
+    db_session.add(
+        AgentRun(
+            id=run_id,
+            trace_id="trace-fallback",
+            session_id=session_id,
+            status="completed",
+        )
+    )
+    db_session.add(ChatMessage(session_id=session_id, role="user", content="如何增肌？"))
+    db_session.add(
+        ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content="建议渐进超负荷训练。",
+            agent_run_id=run_id,
+        )
+    )
+    db_session.add(
+        AgentStep(
+            run_id=run_id,
+            step_index=0,
+            phase="planning",
+            summary="execution plan",
+            payload={"plan": {"tasks": []}},
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/chat/sessions/{session_id}/messages", headers=headers)
+    assert response.status_code == 200
+    assistant = response.json()["messages"][1]
+    assert len(assistant["steps"]) == 1
+    assert assistant["steps"][0]["phase"] == "planning"
+    assert assistant["steps"][0]["summary"] == "已制定执行计划"
+
+
+@pytest.mark.asyncio
+async def test_list_session_messages_falls_back_when_agent_steps_malformed(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user = await register_user(client, "malformed_steps_user")
+    headers = auth_headers(user["access_token"])
+    created = await client.post("/chat/sessions", headers=headers)
+    session_id = uuid.UUID(created.json()["id"])
+    run_id = uuid.uuid4()
+
+    db_session.add(
+        AgentRun(
+            id=run_id,
+            trace_id="trace-malformed",
+            session_id=session_id,
+            status="completed",
+            step_count=1,
+            intent="training",
+        )
+    )
+    db_session.add(ChatMessage(session_id=session_id, role="user", content="如何增肌？"))
+    db_session.add(
+        ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content="建议渐进超负荷训练。",
+            agent_run_id=run_id,
+            agent_steps={"items": [{"phase": "broken"}]},
+            latency_ms=1200,
+        )
+    )
+    db_session.add(
+        AgentStep(
+            run_id=run_id,
+            step_index=0,
+            phase="planning",
+            summary="execution plan",
+            payload={"plan": {"tasks": []}, "cot": "hidden"},
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/chat/sessions/{session_id}/messages", headers=headers)
+    assert response.status_code == 200
+    assistant = response.json()["messages"][1]
+    assert len(assistant["steps"]) == 1
+    assert assistant["steps"][0]["phase"] == "planning"
+    assert "cot" not in (assistant["steps"][0].get("detail") or {})
+    assert assistant["run_status"] == "completed"
+    assert assistant["step_count"] == 1
+    assert assistant["intent"] == "training"
+    assert assistant["latency_ms"] == 1200
 
 
 @pytest.mark.asyncio

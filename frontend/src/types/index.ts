@@ -47,6 +47,11 @@ export type MessageItem = {
   citations?: Citation[];
   agent_run_id?: string;
   feedback?: "up" | "down" | null;
+  steps?: AgentStepEvent[];
+  run_status?: string | null;
+  step_count?: number | null;
+  latency_ms?: number | null;
+  intent?: string | null;
 };
 
 export type LocalMessage = MessageItem & {

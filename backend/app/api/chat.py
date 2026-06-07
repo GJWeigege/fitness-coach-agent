@@ -23,6 +23,7 @@ from app.schemas.chat import (
     SessionListResponse,
     SessionMessagesResponse,
     SessionSummaryItem,
+    parse_message_step_items,
 )
 from app.services.chat_service import ChatService
 from app.services.chat_session_service import ChatSessionService
@@ -186,11 +187,34 @@ async def list_session_messages(
     permissions = get_user_permissions(user)
     _require_session_read(session, user, permissions)
     messages = await session_service.list_messages(db=db, session_id=session_id)
+    fallback_run_ids: list[uuid.UUID] = []
+    run_ids_for_meta: list[uuid.UUID] = []
+    for item in messages:
+        if item.role != "assistant" or item.agent_run_id is None:
+            continue
+        run_ids_for_meta.append(item.agent_run_id)
+        raw_items = None
+        if item.agent_steps and isinstance(item.agent_steps, dict):
+            raw_items = item.agent_steps.get("items")
+        if not parse_message_step_items(raw_items):
+            fallback_run_ids.append(item.agent_run_id)
+    fallback_steps = await session_service.load_steps_by_run_ids(db, fallback_run_ids)
+    agent_runs = await session_service.load_runs_by_ids(db, run_ids_for_meta)
     items: list[MessageItem] = []
     for item in messages:
         citations = None
         if item.retrieved_chunks and isinstance(item.retrieved_chunks, dict):
             citations = item.retrieved_chunks.get("items")
+        steps: list | None = None
+        if item.role == "assistant":
+            raw_items = None
+            if item.agent_steps and isinstance(item.agent_steps, dict):
+                raw_items = item.agent_steps.get("items")
+            steps = parse_message_step_items(raw_items)
+            if not steps and item.agent_run_id and item.agent_run_id in fallback_steps:
+                steps = parse_message_step_items(fallback_steps[item.agent_run_id])
+            steps = steps or None
+        run_meta = agent_runs.get(item.agent_run_id) if item.agent_run_id else None
         items.append(
             MessageItem(
                 id=item.id,
@@ -200,6 +224,11 @@ async def list_session_messages(
                 citations=citations,
                 agent_run_id=item.agent_run_id,
                 feedback=item.feedback,
+                steps=steps,
+                run_status=run_meta.status if run_meta else None,
+                step_count=run_meta.step_count if run_meta else None,
+                latency_ms=item.latency_ms,
+                intent=run_meta.intent if run_meta else None,
             )
         )
     return SessionMessagesResponse(session_id=session_id, messages=items)

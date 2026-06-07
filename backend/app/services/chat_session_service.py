@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AgentRun, ChatMessage, ChatSession
+from app.db.models import AgentRun, AgentStep, ChatMessage, ChatSession
 from app.services.benchmark_runner import BENCHMARK_SESSION_TITLE_PREFIX
 
 RESERVED_BENCHMARK_TITLE_MESSAGE = "会话标题不能使用评测专用前缀。"
@@ -14,6 +14,25 @@ RESERVED_BENCHMARK_TITLE_MESSAGE = "会话标题不能使用评测专用前缀�
 def reject_reserved_session_title(title: str | None) -> None:
     if title and title.startswith(BENCHMARK_SESSION_TITLE_PREFIX):
         raise HTTPException(status_code=400, detail=RESERVED_BENCHMARK_TITLE_MESSAGE)
+
+
+def agent_step_record_to_item(step: AgentStep) -> dict:
+    summary = step.summary or step.phase
+    if step.phase == "planning":
+        summary = "已制定执行计划"
+    item: dict = {"phase": step.phase, "summary": summary, "step_index": step.step_index}
+    detail = sanitize_step_detail(step.payload)
+    if detail:
+        item["detail"] = detail
+    return item
+
+
+def sanitize_step_detail(payload: dict | None) -> dict | None:
+    """Strip internal CoT from user-visible step detail (ADR-011)."""
+    if not payload:
+        return None
+    sanitized = {key: value for key, value in payload.items() if key != "cot"}
+    return sanitized or None
 
 
 class ChatSessionService:
@@ -57,6 +76,37 @@ class ChatSessionService:
             .order_by(ChatMessage.created_at.asc())
         )
         return list((await db.scalars(stmt)).all())
+
+    async def load_steps_by_run_ids(
+        self,
+        db: AsyncSession,
+        run_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, list[dict]]:
+        if not run_ids:
+            return {}
+        rows = list(
+            (
+                await db.scalars(
+                    select(AgentStep)
+                    .where(AgentStep.run_id.in_(run_ids))
+                    .order_by(AgentStep.run_id.asc(), AgentStep.step_index.asc())
+                )
+            ).all()
+        )
+        grouped: dict[uuid.UUID, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row.run_id, []).append(agent_step_record_to_item(row))
+        return grouped
+
+    async def load_runs_by_ids(
+        self,
+        db: AsyncSession,
+        run_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, AgentRun]:
+        if not run_ids:
+            return {}
+        rows = list((await db.scalars(select(AgentRun).where(AgentRun.id.in_(run_ids)))).all())
+        return {row.id: row for row in rows}
 
     async def rename_session(self, db: AsyncSession, session_id: uuid.UUID, title: str) -> ChatSession:
         session = await db.get(ChatSession, session_id)
