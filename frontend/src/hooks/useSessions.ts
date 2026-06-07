@@ -12,6 +12,10 @@ import { useAuth, usePermissions } from "../contexts/AuthContext";
 import { useApp } from "../contexts/AppContext";
 import type { AgentStepEvent, LocalMessage, SessionSummary, StreamEvent, UserProfile } from "../types";
 
+function formatObservabilityTrace(stepCount: number, latencyMs?: number | null): string {
+  return `观测 · 落库 ${stepCount} 步 · ${latencyMs || 0}ms`;
+}
+
 function appendStep(steps: AgentStepEvent[], evt: StreamEvent): AgentStepEvent[] {
   if (evt.type !== "step" || !evt.phase || !evt.summary) return steps;
   return [
@@ -38,7 +42,7 @@ function hydrateMessages(loaded: Awaited<ReturnType<typeof fetchSessionMessages>
       runStatus: m.run_status ?? undefined,
       intent: m.intent ?? (routingIntent ? String(routingIntent) : undefined),
       agent_trace_summary:
-        m.step_count != null ? `agent · ${m.step_count} 步 · ${m.latency_ms || 0}ms` : undefined,
+        m.step_count != null ? formatObservabilityTrace(m.step_count, m.latency_ms) : undefined,
     };
   });
 }
@@ -264,7 +268,9 @@ export function useSessions() {
             runStatus: evt.status,
             agent_trace_summary:
               item.agent_trace_summary ||
-              (evt.step_count != null ? `agent · ${evt.step_count} 步 · ${evt.latency_ms || 0}ms` : undefined),
+              (evt.step_count != null
+                ? formatObservabilityTrace(evt.step_count, evt.latency_ms)
+                : undefined),
           }))
         );
       } else if (evt.type === "error") {

@@ -59,7 +59,7 @@ export function AgentRunsPage() {
                 <th>时间</th>
                 <th>意图</th>
                 <th>状态</th>
-                <th>步数</th>
+                <th>观测步数</th>
                 <th>耗时</th>
               </tr>
             </thead>

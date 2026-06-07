@@ -12,7 +12,7 @@ export function AgentStepsPanel({ steps, runStatus, traceSummary }: AgentStepsPa
   return (
     <details className="agent-steps">
       <summary>
-        Agent 执行过程 ({steps.length} 步)
+        Agent 执行过程（{steps.length} 个阶段）
         {runStatus === "degraded" ? <span className="agent-steps__badge">已降级</span> : null}
       </summary>
       {traceSummary ? <p className="agent-steps__trace">{traceSummary}</p> : null}
