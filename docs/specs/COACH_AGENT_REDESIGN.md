@@ -810,7 +810,7 @@ fitness-coach-agent/
 10. [ ] **LoRA 文档**：`LLM_FINETUNE_EXPERIMENT.md` 存在；训练脚本可 dry-run（不必生产启用）  
 11. [ ] **降级**：mock 步数耗尽/熔断/readable；`PARALLEL_SUB_AGENTS_ENABLED=false` 串行 recovery 仍可用  
 12. [ ] **范围**：无 handoff/客服  
-13. [ ] **自动化**：pytest；npm lint+build  
+13. [ ] **自动化**：pytest；pnpm lint+build  
 14. [ ] **Feedback**：UI 提交 up/down  
 15. [ ] **done 时序**：SSE `done` 在 assistant 行入库 **之后**  
 16. [ ] **SSE 正文契约**（§3.6.1）：单 agent → synthesize `replace`、无 `delta`；recovery → synthesize `delta` 流式  

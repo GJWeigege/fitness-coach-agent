@@ -102,6 +102,7 @@ export function usePermissions() {
   const { permissions } = useAuth();
   return {
     canSendChat: permissions.has("chat:send"),
+    canViewAllSessions: permissions.has("session:read:all"),
     canManageOwnSession: permissions.has("session:manage:own"),
     canManageAllSession: permissions.has("session:manage:all"),
     canViewKnowledge: permissions.has("knowledge:read"),

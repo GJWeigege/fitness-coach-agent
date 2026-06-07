@@ -1,0 +1,22 @@
+{
+  "name": "fitness-coach-agent",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "dev": "pnpm --dir frontend run dev",
+    "build": "pnpm --dir frontend run build",
+    "lint": "pnpm --dir frontend run lint",
+    "test": "pnpm --dir frontend run test",
+    "record": "pnpm --dir scripts/demo run record"
+  },
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=9"
+  },
+  "pnpm": {
+    "overrides": {
+      "uri-js": "4.4.1"
+    }
+  }
+}

@@ -3,13 +3,14 @@ import {
   deleteSession,
   fetchSessionMessages,
   fetchSessions,
+  fetchUsers,
   renameSession,
   streamMessage,
   submitFeedback,
 } from "../api";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth, usePermissions } from "../contexts/AuthContext";
 import { useApp } from "../contexts/AppContext";
-import type { AgentStepEvent, LocalMessage, SessionSummary, StreamEvent } from "../types";
+import type { AgentStepEvent, LocalMessage, SessionSummary, StreamEvent, UserProfile } from "../types";
 
 function appendStep(steps: AgentStepEvent[], evt: StreamEvent): AgentStepEvent[] {
   if (evt.type !== "step" || !evt.phase || !evt.summary) return steps;
@@ -51,9 +52,12 @@ function updateAssistant(
 }
 
 export function useSessions() {
-  const { token } = useAuth();
+  const { token, me } = useAuth();
+  const { canViewAllSessions, canManageUsers } = usePermissions();
   const { setError } = useApp();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [filterUserId, setFilterUserId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState("");
   const [isDraftSession, setIsDraftSession] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -61,6 +65,7 @@ export function useSessions() {
   const [useRag, setUseRag] = useState(true);
   const [busy, setBusy] = useState(false);
   const initialSessionPicked = useRef(false);
+  const loadSessionsRequestId = useRef(0);
 
   const loadSessionMessages = useCallback(
     async (sessionId: string) => {
@@ -71,14 +76,31 @@ export function useSessions() {
     [token]
   );
 
-  const loadSessions = useCallback(async () => {
-    if (!token) return;
+  const loadSessions = useCallback(async (): Promise<SessionSummary[]> => {
+    if (!token) return [];
+    const requestId = ++loadSessionsRequestId.current;
     try {
-      setSessions(await fetchSessions(token));
+      const userId = filterUserId || undefined;
+      const loaded = await fetchSessions(token, userId);
+      if (requestId !== loadSessionsRequestId.current) return [];
+      setSessions(loaded);
+      return loaded;
+    } catch (err) {
+      if (requestId === loadSessionsRequestId.current) {
+        setError((err as Error).message);
+      }
+      return [];
+    }
+  }, [token, filterUserId, setError]);
+
+  const loadUsers = useCallback(async () => {
+    if (!token || !canManageUsers) return;
+    try {
+      setUsers(await fetchUsers(token));
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [token, setError]);
+  }, [token, canManageUsers, setError]);
 
   useEffect(() => {
     if (!token) return;
@@ -86,11 +108,30 @@ export function useSessions() {
   }, [token, loadSessions]);
 
   useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
     if (initialSessionPicked.current || isDraftSession || activeSessionId || sessions.length === 0) {
       return;
     }
     initialSessionPicked.current = true;
     setActiveSessionId(sessions[0].id);
+  }, [sessions, activeSessionId, isDraftSession]);
+
+  useEffect(() => {
+    if (isDraftSession || !activeSessionId) return;
+    if (sessions.some((s) => s.id === activeSessionId)) return;
+
+    if (sessions.length > 0) {
+      setIsDraftSession(false);
+      setActiveSessionId(sessions[0].id);
+      return;
+    }
+
+    setIsDraftSession(true);
+    setActiveSessionId("");
+    setMessages([]);
   }, [sessions, activeSessionId, isDraftSession]);
 
   useEffect(() => {
@@ -241,7 +282,10 @@ export function useSessions() {
         setIsDraftSession(false);
         await loadSessionMessages(resolvedSessionId);
       }
-      void loadSessions();
+      const refreshed = await loadSessions();
+      if (resolvedSessionId && !refreshed.some((s) => s.id === resolvedSessionId)) {
+        setFilterUserId("");
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -295,6 +339,15 @@ export function useSessions() {
     setMessages([]);
   }
 
+  const userNameById = useCallback(
+    (userId: string | null) => {
+      if (!userId) return "未知用户";
+      if (me?.id === userId) return "我的";
+      return users.find((u) => u.id === userId)?.username ?? userId.slice(0, 8);
+    },
+    [me?.id, users]
+  );
+
   return {
     sessions,
     activeSessionId,
@@ -313,5 +366,11 @@ export function useSessions() {
     rename,
     remove,
     startNewSession,
+    canViewAllSessions,
+    filterUserId,
+    setFilterUserId,
+    users,
+    currentUserId: me?.id ?? "",
+    userNameById,
   };
 }

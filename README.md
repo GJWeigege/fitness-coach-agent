@@ -77,10 +77,11 @@ OpenAPI: http://localhost:8000/docs
 
 ### 3. Frontend
 
+> **Package manager:** this repo uses **pnpm only** (`preinstall` blocks npm/yarn). Install from repo root:
+
 ```bash
-cd frontend
 pnpm install
-pnpm run dev
+pnpm --dir frontend run dev
 ```
 
 App: http://localhost:5173
@@ -108,7 +109,7 @@ python scripts/seed_demo_data.py --knowledge-only
 
 ```bash
 cd backend && pytest -q
-cd frontend && pnpm run lint && pnpm run build
+pnpm --dir frontend run lint && pnpm --dir frontend run build
 ```
 
 Load test (optional, requires [k6](https://k6.io)):

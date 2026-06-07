@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { BadgeVariant } from "./badgeVariants";
 
 const variantClass: Record<BadgeVariant, string> = {
@@ -8,6 +9,14 @@ const variantClass: Record<BadgeVariant, string> = {
   info: "badge--info",
 };
 
-export function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: BadgeVariant }) {
-  return <span className={`badge ${variantClass[variant]}`}>{children}</span>;
+export function Badge({
+  children,
+  variant = "default",
+  className,
+}: {
+  children: ReactNode;
+  variant?: BadgeVariant;
+  className?: string;
+}) {
+  return <span className={["badge", variantClass[variant], className].filter(Boolean).join(" ")}>{children}</span>;
 }

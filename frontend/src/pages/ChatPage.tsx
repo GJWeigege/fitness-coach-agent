@@ -17,11 +17,17 @@ export function ChatPage() {
         isDraftSession={chat.isDraftSession}
         canSendChat={canSendChat}
         canManage={canManage}
+        canViewAllSessions={chat.canViewAllSessions}
+        currentUserId={chat.currentUserId}
+        filterUserId={chat.filterUserId}
+        users={chat.users}
+        userNameById={chat.userNameById}
         onSelect={chat.setActiveSessionId}
         onNew={chat.startNewSession}
         onRefresh={() => void chat.loadSessions()}
         onRename={(id) => void chat.rename(id)}
         onDelete={(id) => void chat.remove(id)}
+        onFilterUserChange={chat.setFilterUserId}
       />
       <div className="chat-page">
         <ChatWindow

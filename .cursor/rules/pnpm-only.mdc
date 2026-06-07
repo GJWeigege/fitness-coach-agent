@@ -1,0 +1,25 @@
+---
+description: Enforce pnpm as the only JavaScript package manager in this repo
+alwaysApply: true
+---
+
+# Package manager: pnpm only
+
+This repository uses **pnpm** exclusively. Never use `npm`, `yarn`, or `npx` for installs or scripts.
+
+## Commands
+
+| Task | Command |
+|------|---------|
+| Install (repo root) | `pnpm install` |
+| Frontend dev | `pnpm --dir frontend run dev` |
+| Frontend build | `pnpm --dir frontend run build` |
+| Frontend test | `pnpm --dir frontend run test` |
+| Demo recorder | `pnpm --dir scripts/demo run record` |
+
+## Rules for agents
+
+- Do **not** run `npm install`, `npm run`, `npm ci`, or `npx` for project dependencies.
+- Add dependencies with `pnpm add --dir <workspace> <pkg>` or `pnpm add -D --dir frontend <pkg>`.
+- `preinstall` hooks block non-pnpm installs; keep lockfile at repo root (`pnpm-lock.yaml`).
+- Workspace packages: `frontend`, `scripts/demo` (see `pnpm-workspace.yaml`).

@@ -5,8 +5,8 @@
  *
  * 用法：
  *   cd scripts/demo
- *   npm install && npm run install-browser
- *   npm run record
+ *   pnpm install && pnpm run install-browser
+ *   pnpm run record
  *
  * 环境变量：
  *   BASE_URL=http://localhost:5173
@@ -273,8 +273,8 @@ async function main() {
         "",
         "```bash",
         "cd scripts/demo",
-        "npm install && npm run install-browser",
-        "npm run record",
+        "pnpm install && pnpm run install-browser",
+        "pnpm run record",
         "```",
         "",
         "更多口述稿见 [PITCH-15min.md](../PITCH-15min.md)。",

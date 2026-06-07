@@ -2,9 +2,15 @@
   "name": "fitness-coach-demo-recorder",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
     "record": "node record_interview_demo.mjs",
     "install-browser": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=9"
   },
   "devDependencies": {
     "playwright": "^1.52.0"

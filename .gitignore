@@ -4,6 +4,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 node_modules/
+package-lock.json
+npm-shrinkwrap.json
+.yarn/
+.yarnrc.yml
 dist/
 .worktrees/
 backend/data/uploads/*

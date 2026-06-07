@@ -63,7 +63,7 @@
 
 ## Part 4 — Live Demo 话术（5 min）
 
-> 预录演示视频见 [demo-videos/](demo-videos/)（`cd scripts/demo && npm run record` 可重录）  
+> 预录演示视频见 [demo-videos/](demo-videos/)（`pnpm --dir scripts/demo run record` 可重录）  
 > 完整流程：Profile → Chat/Multi-Agent → Knowledge → Benchmark → Agent Runs
 
 1. 登录 `coach_demo` / `Demo@123456`  
