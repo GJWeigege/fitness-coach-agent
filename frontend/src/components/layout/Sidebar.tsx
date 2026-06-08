@@ -35,7 +35,7 @@ export function Sidebar() {
     { to: "/agent-runs", label: "Agent Runs", icon: <ActivityIcon />, visible: canViewObservability },
     {
       to: "/benchmark",
-      label: "Benchmark",
+      label: "评测",
       icon: <SparkIcon />,
       visible: canReadBenchmark || canRunBenchmark,
     },

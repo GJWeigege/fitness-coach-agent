@@ -22,3 +22,14 @@ class KnowledgeDocumentItem(BaseModel):
 
 class KnowledgeDocumentListResponse(BaseModel):
     documents: list[KnowledgeDocumentItem]
+
+
+class KnowledgeReindexSkippedItem(BaseModel):
+    document_id: uuid.UUID
+    title: str
+    reason: str
+
+
+class KnowledgeReindexAllResponse(BaseModel):
+    queued_count: int
+    skipped: list[KnowledgeReindexSkippedItem]

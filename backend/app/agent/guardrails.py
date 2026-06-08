@@ -64,6 +64,36 @@ class CoachGuardrails:
     def banned_terms(self) -> list[str]:
         return list(self._banned_terms)
 
+    def _has_top_keyword_rank(self, citation: dict) -> bool:
+        if not citation.get("keyword_hit"):
+            return False
+        rank = citation.get("keyword_rank")
+        if rank is None:
+            return False
+        return int(rank) < self.settings.rag_keyword_top_for_filter
+
+    def _effective_scores(self, citations: list[dict]) -> list[float]:
+        scores: list[float] = []
+        for citation in citations:
+            if citation.get("rerank_score") is not None:
+                scores.append(float(citation["rerank_score"]))
+            elif citation.get("vector_score") is not None:
+                scores.append(float(citation["vector_score"]))
+            elif citation.get("source") == "vector":
+                scores.append(float(citation.get("score", 0)))
+            else:
+                scores.append(float(citation.get("score", 0)))
+        return scores
+
+    def _hybrid_citations_valid(self, citations: list[dict]) -> bool:
+        max_rerank = max(float(c.get("rerank_score", 0)) for c in citations)
+        if max_rerank > 0:
+            return True
+        max_vector = max(float(c.get("vector_score", 0)) for c in citations)
+        if max_vector >= self.settings.rag_vector_score_min_with_keyword:
+            return True
+        return any(self._has_top_keyword_rank(c) for c in citations)
+
     def citations_valid(self, citations: list[dict]) -> bool:
         if not citations:
             return False
@@ -72,17 +102,16 @@ class CoachGuardrails:
         if not substantive:
             return False
 
-        scores = sorted((float(c.get("score", 0)) for c in substantive), reverse=True)
+        if any(c.get("source") in {"hybrid", "keyword"} for c in substantive):
+            return self._hybrid_citations_valid(substantive)
+
+        scores = sorted(self._effective_scores(substantive), reverse=True)
         top = scores[0]
         if top <= 0:
             return False
 
         if top < self.settings.rag_score_floor:
             return False
-
-        # Hybrid / keyword retrieval uses RRF-derived scores (~0.02–0.35), not cosine similarity.
-        if any(c.get("source") in {"hybrid", "keyword"} for c in substantive):
-            return True
 
         if top >= self.settings.rag_score_threshold:
             return True

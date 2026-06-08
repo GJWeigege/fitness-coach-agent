@@ -28,12 +28,27 @@ class Settings(BaseSettings):
     coach_answer_model: str = "qwen-plus"
     coach_planner_model: str = "qwen-plus"
     coach_embedding_model: str = "text-embedding-v3"
+    coach_rerank_model: str = "gte-rerank-v2"
     coach_long_context_model: str = "qwen-long"
 
+    dashscope_rerank_url: str = (
+        "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+    )
+
     embedding_dim: int = 1024
-    rag_top_k: int = 4
+    rag_top_k: int = 3
     rag_hybrid_enabled: bool = True
-    rag_keyword_top_k: int = 8
+    rag_keyword_top_k: int = 12
+    rag_vector_candidate_k: int = 20
+    rag_vector_score_min: float = 0.55
+    rag_vector_score_min_with_keyword: float = 0.45
+    rag_keyword_top_for_filter: int = 3
+    rag_vector_top_for_filter: int = 10
+    rag_max_chunks_per_document: int = 2
+    rag_rerank_enabled: bool = True
+    rag_rerank_candidate_k: int = 15
+    rag_mmr_enabled: bool = True
+    rag_mmr_lambda: float = 0.7
     rag_score_threshold: float = 0.35
     rag_score_floor: float = 0.01
     rag_score_min_gap: float = 0.004
@@ -62,8 +77,8 @@ class Settings(BaseSettings):
     memory_summary_max_chars: int = 500
     memory_max_user_chars: int = 8000
 
-    ingest_chunk_size: int = 800
-    ingest_chunk_overlap: int = 120
+    ingest_chunk_size: int = 400
+    ingest_chunk_overlap: int = 60
     upload_dir: str = "backend/data/uploads"
     max_upload_bytes: int = 10 * 1024 * 1024
 

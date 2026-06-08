@@ -34,6 +34,56 @@ def test_split_text_uses_settings_defaults():
     assert all(len(chunk) <= settings.ingest_chunk_size for chunk in chunks)
 
 
+def test_split_markdown_by_sections_includes_title_prefix():
+    service = IngestService(llm_client=MockLLM())  # type: ignore[arg-type]
+    text = """# 上下肢分化训练
+
+## 四日上下肢分化
+- 周一训练
+
+## 两日上下肢
+- 周一上肢
+"""
+    chunks = service._split_text(text)
+    assert len(chunks) == 2
+    assert all("# 上下肢分化训练" in chunk for chunk in chunks)
+    assert any("## 四日上下肢分化" in chunk for chunk in chunks)
+    assert any("## 两日上下肢" in chunk for chunk in chunks)
+
+
+def test_split_markdown_merges_short_preamble_into_first_section():
+    service = IngestService(llm_client=MockLLM())  # type: ignore[arg-type]
+    text = """# 标题
+
+简短导语。
+
+## 第一节
+内容一
+"""
+    chunks = service._split_text(text)
+    assert len(chunks) == 1
+    assert "简短导语" in chunks[0]
+    assert "## 第一节" in chunks[0]
+    assert "# 标题" in chunks[0]
+
+
+def test_split_markdown_keeps_long_preamble_as_first_chunk():
+    service = IngestService(llm_client=MockLLM())  # type: ignore[arg-type]
+    preamble = "导语" * 30
+    text = f"""# 标题
+
+{preamble}
+
+## 第一节
+内容一
+"""
+    chunks = service._split_text(text)
+    assert len(chunks) == 2
+    assert preamble in chunks[0]
+    assert "## 第一节" not in chunks[0]
+    assert "## 第一节" in chunks[1]
+
+
 @pytest.mark.asyncio
 async def test_ingest_file_creates_document_and_chunks(db_session, tmp_path: Path):
     content = "\n".join([f"训练建议段落{i} " + ("z" * 100) for i in range(1, 6)])

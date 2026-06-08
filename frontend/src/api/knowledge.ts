@@ -1,5 +1,5 @@
 import { API_BASE, apiFetch, buildHeaders } from "./client";
-import type { KnowledgeDocument } from "../types";
+import type { KnowledgeDocument, KnowledgeReindexAllResponse } from "../types";
 
 export async function uploadKnowledge(
   token: string,
@@ -26,6 +26,13 @@ export async function reindexDocument(
   documentId: string
 ): Promise<{ document_id: string; chunks: number; title: string }> {
   return apiFetch(`${API_BASE}/knowledge/documents/${documentId}/reindex`, {
+    method: "POST",
+    headers: buildHeaders(token),
+  });
+}
+
+export async function reindexAllDocuments(token: string): Promise<KnowledgeReindexAllResponse> {
+  return apiFetch(`${API_BASE}/knowledge/reindex-all`, {
     method: "POST",
     headers: buildHeaders(token),
   });

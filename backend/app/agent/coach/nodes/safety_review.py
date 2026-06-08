@@ -1,4 +1,6 @@
 import json
+import time
+import uuid
 
 from langchain_core.runnables import RunnableConfig
 
@@ -64,14 +66,15 @@ async def _llm_safety_blocked(llm, review_text: str) -> tuple[bool, int | None, 
 
 
 async def safety_review_node(state: CoachState, config: RunnableConfig) -> dict:
+    start = time.perf_counter()
     user_message = state.get("user_message", "")
     intent = state.get("intent", "unknown")
+    conf = config.get("configurable") or {}
 
     # 红旗词只审查用户原话，避免知识库/子 agent 输出中的「禁忌」「就医」等科普用语误拦。
     blocked = _contains_red_flag(user_message)
 
     if not blocked and intent == "safety":
-        conf = config.get("configurable") or {}
         llm = conf.get("llm")
         if llm is not None:
             blocked, prompt_tokens, completion_tokens, model_name = await _llm_safety_blocked(
@@ -87,6 +90,20 @@ async def safety_review_node(state: CoachState, config: RunnableConfig) -> dict:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                 )
+
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    obs = conf.get("observability")
+    run_id = state.get("run_id")
+    db = conf.get("db")
+    if obs and run_id and db is not None:
+        await obs.append_step(
+            db,
+            uuid.UUID(run_id),
+            phase="safety_review",
+            summary="安全审查",
+            payload={"blocked": blocked, "intent": intent},
+            duration_ms=duration_ms,
+        )
 
     return {"safety_blocked": blocked}
 

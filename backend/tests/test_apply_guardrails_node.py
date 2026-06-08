@@ -27,6 +27,8 @@ async def test_apply_guardrails_uses_knowledge_search_tool_citations():
                         "content": "# 训练计划\n新手每周 3 次全身训练",
                         "score": 0.164,
                         "source": "hybrid",
+                        "vector_score": 0.58,
+                        "keyword_hit": True,
                     }
                 ]
             },

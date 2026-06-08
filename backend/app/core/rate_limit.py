@@ -82,8 +82,9 @@ LOGIN_RATE = RateLimitRule(max_requests=10, window_seconds=60)
 REGISTER_RATE = RateLimitRule(max_requests=5, window_seconds=3600)
 BOOTSTRAP_RATE = RateLimitRule(max_requests=3, window_seconds=3600)
 STREAM_RATE = RateLimitRule(max_requests=30, window_seconds=60)
-UPLOAD_RATE = RateLimitRule(max_requests=10, window_seconds=3600)
-REINDEX_RATE = RateLimitRule(max_requests=5, window_seconds=3600)
+UPLOAD_RATE = RateLimitRule(max_requests=1000, window_seconds=3600)
+REINDEX_RATE = RateLimitRule(max_requests=1000, window_seconds=3600)
+REINDEX_ALL_RATE = RateLimitRule(max_requests=5, window_seconds=3600)
 CHAT_WRITE_RATE = RateLimitRule(max_requests=30, window_seconds=60)
 
 

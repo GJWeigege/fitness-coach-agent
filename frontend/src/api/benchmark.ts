@@ -115,6 +115,68 @@ export async function cancelBenchmarkRun(
   });
 }
 
+/**
+ * Benchmark failure reason codes — keep in sync with backend/app/services/benchmark_runner.py
+ * (FR_* constants).
+ */
+export type BenchmarkFailureReasonCode =
+  | "intent_mismatch"
+  | "missing_citation"
+  | "missing_disclaimer"
+  | "banned_diagnosis"
+  | "missing_safety_review"
+  | "unfaithful_answer"
+  | "run_error"
+  | `missing_tools:${string}`
+  | `plan_agents_mismatch:expected=${string},actual=${string}`;
+
+export type BenchmarkFailureReasonEntry = {
+  code: string;
+  label: string;
+};
+
+export function formatFailureReason(code: string): string {
+  if (code === "intent_mismatch") return "意图不匹配";
+  if (code === "missing_citation") return "缺少知识引用";
+  if (code === "missing_disclaimer") return "缺少免责声明";
+  if (code === "banned_diagnosis") return "含禁止的诊断表述";
+  if (code === "missing_safety_review") return "未记录安全审查步骤";
+  if (code === "unfaithful_answer") return "回答与参考要点不符";
+  if (code === "run_error") return "运行异常";
+
+  if (code.startsWith("missing_tools:")) {
+    const tools = code.slice("missing_tools:".length).split(",").filter(Boolean);
+    if (tools.length === 0) return "缺少必需工具";
+    return `缺少工具：${tools.join("、")}`;
+  }
+
+  if (code.startsWith("plan_agents_mismatch:")) {
+    const rest = code.slice("plan_agents_mismatch:".length);
+    const actualMarker = ",actual=";
+    const actualIdx = rest.indexOf(actualMarker);
+    if (actualIdx >= 0 && rest.startsWith("expected=")) {
+      const expected = rest.slice("expected=".length, actualIdx) || "—";
+      const actual = rest.slice(actualIdx + actualMarker.length) || "—";
+      return `计划 agent 不匹配（期望 ${expected}，实际 ${actual}）`;
+    }
+  }
+
+  return code;
+}
+
+export function getFailureReasonEntries(
+  metrics: Record<string, unknown> | null | undefined,
+): BenchmarkFailureReasonEntry[] {
+  const raw = metrics?.failure_reasons;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw.map(String).map((code) => ({ code, label: formatFailureReason(code) }));
+}
+
+/** @deprecated Prefer getFailureReasonEntries for stable React keys */
+export function getFailureReasons(metrics: Record<string, unknown> | null | undefined): string[] {
+  return getFailureReasonEntries(metrics).map((entry) => entry.label);
+}
+
 export function formatMetric(value: number | null | undefined): string {
   if (value == null) return "—";
   if (value <= 1) return `${(value * 100).toFixed(1)}%`;

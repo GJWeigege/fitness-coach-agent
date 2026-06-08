@@ -7,6 +7,7 @@ from app.agent.intent_router import (
     INTENT_ACTIVE_AGENTS,
     CoachIntentRouter,
     VALID_INTENTS,
+    has_injury_indicator,
     load_router_prompt,
 )
 from app.llm.dashscope_client import ChatResult
@@ -81,6 +82,37 @@ async def test_safety_keyword(router):
     result = await router.route("我膝盖受伤还能深蹲吗")
     assert result["intent"] == "safety"
     assert result["active_agents"] == ["safety"]
+
+
+@pytest.mark.asyncio
+async def test_safety_eval_001_knee_injury_past_tense(router):
+    result = await router.route("我膝盖受过伤，还能深蹲吗？")
+    assert result["intent"] == "safety"
+    assert result["active_agents"] == ["safety"]
+
+
+@pytest.mark.asyncio
+async def test_safety_eval_008_pain_during_lift(router):
+    result = await router.route("硬拉时腰有点疼，是不是动作错了？")
+    assert result["intent"] == "safety"
+    assert result["active_agents"] == ["safety"]
+
+
+@pytest.mark.asyncio
+async def test_pain_compound_words_do_not_trigger_safety(router):
+    assert has_injury_indicator("今天训练很痛快") is False
+    assert has_injury_indicator("我不痛") is False
+    result = await router.route("今天训练很痛快")
+    assert result["intent"] == "training"
+    result = await router.route("我不痛，可以继续练")
+    assert result["intent"] != "safety"
+
+
+@pytest.mark.asyncio
+async def test_affection_word_does_not_trigger_safety(router):
+    assert has_injury_indicator("疼爱") is False
+    result = await router.route("这份疼爱很温暖")
+    assert result["intent"] != "safety"
 
 
 @pytest.mark.asyncio

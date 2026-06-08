@@ -8,9 +8,15 @@ from app.agent.guardrails import COACH_DISCLAIMER, CoachGuardrails
 from app.db.models import AgentStep, User
 from app.services.benchmark_runner import (
     DEFAULT_DATASET_PATH,
+    FR_INTENT_MISMATCH,
+    FR_MISSING_CITATION,
+    FR_MISSING_DISCLAIMER,
+    FR_MISSING_SAFETY_REVIEW,
+    FR_MISSING_TOOLS_PREFIX,
     BenchmarkRunner,
     BenchmarkSample,
     aggregate_benchmark_metrics,
+    collect_failure_reasons,
     compute_plan_agent_recall,
     compute_safety_compliance,
     evaluate_sample_outcome,
@@ -170,6 +176,64 @@ def test_evaluate_sample_outcome_passes_when_all_criteria_met():
     assert evaluation.intent_match is True
     assert evaluation.tools_covered is True
     assert evaluation.safety_compliant is True
+    assert evaluation.metrics["failure_reasons"] == []
+
+
+def test_collect_failure_reasons_for_intent_and_safety():
+    sample = BenchmarkSample(
+        id="eval-003",
+        question="增肌训练",
+        expected_intent="training",
+        must_cite=True,
+        must_include_tools=["knowledge_search"],
+        must_include_disclaimer=True,
+    )
+    reasons = collect_failure_reasons(
+        sample,
+        predicted_intent="training",
+        citations=[],
+        steps=[],
+        reply="无免责声明",
+    )
+    assert FR_MISSING_CITATION in reasons
+    assert f"{FR_MISSING_TOOLS_PREFIX}knowledge_search" in reasons
+    assert FR_MISSING_DISCLAIMER in reasons
+
+    reasons_with_disclaimer = collect_failure_reasons(
+        BenchmarkSample(
+            id="eval-003",
+            question="增肌训练",
+            expected_intent="training",
+            must_include_disclaimer=True,
+        ),
+        predicted_intent="training",
+        citations=[{"chunk_id": "c1"}],
+        steps=[],
+        reply=f"训练建议。\n\n{COACH_DISCLAIMER}",
+    )
+    assert reasons_with_disclaimer == [FR_MISSING_SAFETY_REVIEW]
+
+
+def test_evaluate_sample_outcome_includes_failure_reasons_when_failed():
+    sample = BenchmarkSample(
+        id="eval-008",
+        question="硬拉腰疼",
+        expected_intent="safety",
+        must_cite=True,
+        must_include_disclaimer=True,
+    )
+    evaluation = evaluate_sample_outcome(
+        sample,
+        predicted_intent="training",
+        citations=[{"chunk_id": "c1"}],
+        steps=[],
+        reply=f"训练建议。\n\n{COACH_DISCLAIMER}",
+        latency_ms=100,
+        agent_run_id=uuid.uuid4(),
+    )
+    assert evaluation.passed is False
+    assert FR_INTENT_MISMATCH in evaluation.metrics["failure_reasons"]
+    assert FR_MISSING_SAFETY_REVIEW in evaluation.metrics["failure_reasons"]
 
 
 def test_faithfulness_affects_passed_when_reference_present():

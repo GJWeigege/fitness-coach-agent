@@ -86,3 +86,54 @@ async def test_safety_intent_llm_can_block_without_keyword():
     result = await safety_review_node(state, {"configurable": {"llm": BlockingLLM()}})
 
     assert result["safety_blocked"] is True
+
+
+@pytest.mark.asyncio
+async def test_safety_review_persists_step_in_db(db_session):
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from app.db.models import AgentStep
+    from app.services.observability_service import ObservabilityService
+
+    obs = ObservabilityService()
+    run = await obs.create_run(
+        db_session,
+        session_id=uuid4(),
+        user_message_id=None,
+        trace_id="trace-safety-step",
+    )
+    await db_session.commit()
+
+    state = initial_coach_state(
+        session_id=str(uuid4()),
+        user_id="u1",
+        user_message_id="m1",
+        user_message="帮我制定恢复期的训练和饮食计划",
+        run_id=str(run.id),
+    )
+    state["intent"] = "recovery"
+
+    await safety_review_node(
+        state,
+        {
+            "configurable": {
+                "db": db_session,
+                "observability": obs,
+                "llm": BlockingLLM(),
+            }
+        },
+    )
+
+    steps = list(
+        (
+            await db_session.scalars(
+                select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.step_index)
+            )
+        ).all()
+    )
+    safety_steps = [step for step in steps if step.phase == "safety_review"]
+    assert len(safety_steps) == 1
+    assert safety_steps[0].payload["blocked"] is False
+    assert safety_steps[0].payload["intent"] == "recovery"

@@ -24,12 +24,22 @@ export function KnowledgePage() {
           <h3>知识库管理</h3>
           <p>导入文档并构建向量索引，供 RAG 检索使用</p>
         </div>
-        <Button variant="secondary" onClick={() => void kb.loadKnowledgeDocs()}>
-          刷新列表
-        </Button>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <Button
+            variant="secondary"
+            disabled={!kb.canReindexKnowledge || kb.knowledgeDocs.length === 0 || kb.reindexAllBusy}
+            onClick={() => void kb.reindexAll()}
+          >
+            {kb.reindexAllLoading ? "提交中…" : kb.reindexAllPolling ? "重建中…" : "一键重建索引"}
+          </Button>
+          <Button variant="secondary" onClick={() => void kb.loadKnowledgeDocs()}>
+            刷新列表
+          </Button>
+        </div>
       </div>
 
       {kb.error ? <p className="panel__error">{kb.error}</p> : null}
+      {kb.reindexAllStatus ? <p className="upload-zone__status">{kb.reindexAllStatus}</p> : null}
 
       <div className="upload-zone">
         <div className="upload-zone__icon">

@@ -28,8 +28,67 @@ def test_citation_guard_not_searched_unchanged():
 def test_citation_guard_hybrid_rrf_scores_valid():
     g = CoachGuardrails()
     citations = [
-        {"score": 0.164, "content": "新手每周 3 次全身训练", "source": "hybrid"},
-        {"score": 0.161, "content": "周期化原则", "source": "hybrid"},
+        {
+            "score": 0.164,
+            "content": "新手每周 3 次全身训练",
+            "source": "hybrid",
+            "vector_score": 0.58,
+            "keyword_hit": True,
+        },
+        {
+            "score": 0.161,
+            "content": "周期化原则",
+            "source": "hybrid",
+            "vector_score": 0.52,
+            "keyword_hit": True,
+        },
+    ]
+    text = "根据知识库制定一周力量计划。"
+    assert g.apply_citation_guard("training", citations, text, knowledge_searched=True) == text
+
+
+def test_citation_guard_hybrid_without_signal_rejected():
+    g = CoachGuardrails()
+    citations = [
+        {
+            "score": 0.164,
+            "content": "弱相关片段",
+            "source": "hybrid",
+            "vector_score": 0.2,
+            "keyword_hit": False,
+        },
+    ]
+    text = "根据知识库制定一周力量计划。"
+    assert g.apply_citation_guard("training", citations, text, knowledge_searched=True) == FALLBACK_NO_KNOWLEDGE
+
+
+def test_citation_guard_rejects_weak_keyword_hit_without_top_rank():
+    g = CoachGuardrails()
+    citations = [
+        {
+            "score": 0.164,
+            "content": "弱关键词命中",
+            "source": "hybrid",
+            "vector_score": 0.0,
+            "keyword_hit": True,
+            "keyword_rank": 5,
+        },
+    ]
+    text = "根据知识库制定一周力量计划。"
+    assert g.apply_citation_guard("training", citations, text, knowledge_searched=True) == FALLBACK_NO_KNOWLEDGE
+
+
+def test_citation_guard_accepts_top_keyword_rank_without_vector_score():
+    g = CoachGuardrails()
+    citations = [
+        {
+            "score": 0.164,
+            "content": "关键词 Top 命中",
+            "source": "hybrid",
+            "vector_score": 0.0,
+            "keyword_hit": True,
+            "keyword_rank": 1,
+        },
     ]
     text = "根据知识库制定一周力量计划。"
     assert g.apply_citation_guard("training", citations, text, knowledge_searched=True) == text
@@ -49,7 +108,14 @@ def test_collect_rag_citations_from_tool_calls():
                 "status": "ok",
                 "result": {
                     "citations": [
-                        {"chunk_id": "c1", "content": "训练计划", "score": 0.16, "source": "hybrid"},
+                        {
+                            "chunk_id": "c1",
+                            "content": "训练计划",
+                            "score": 0.16,
+                            "source": "hybrid",
+                            "vector_score": 0.6,
+                            "keyword_hit": True,
+                        },
                     ]
                 },
             },
@@ -69,7 +135,7 @@ def test_apply_guardrails_keeps_answer_when_tool_calls_have_citations():
                 "status": "ok",
                 "result": {
                     "citations": [
-                        {"chunk_id": "c1", "content": "新手训练", "score": 0.16, "source": "hybrid"},
+                        {"chunk_id": "c1", "content": "新手训练", "score": 0.16, "source": "hybrid", "vector_score": 0.6, "keyword_hit": True},
                     ]
                 },
             }

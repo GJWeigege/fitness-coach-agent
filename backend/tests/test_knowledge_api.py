@@ -1,12 +1,14 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import app.api.knowledge as knowledge_api
 from app.core.config import get_settings
 from app.core.rate_limit import RateLimitRule
+from app.db.models import KnowledgeDocument
 from tests.conftest import TEST_DATABASE_URL
 from tests.test_auth import auth_headers, bootstrap_admin
 
@@ -36,6 +38,15 @@ async def create_kb_editor(client: AsyncClient) -> dict:
     )
     assert login.status_code == 200, login.text
     return login.json()
+
+
+@pytest.fixture(autouse=True)
+def reset_reindex_all_lock():
+    if knowledge_api._reindex_all_lock.locked():
+        knowledge_api._reindex_all_lock.release()
+    yield
+    if knowledge_api._reindex_all_lock.locked():
+        knowledge_api._reindex_all_lock.release()
 
 
 @pytest.fixture
@@ -228,3 +239,238 @@ async def test_reindex_rate_limit(client: AsyncClient, mock_dashscope_client, tm
     assert first.status_code == 202
     assert second.status_code == 202
     assert third.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_documents(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    for name in ("doc-a.md", "doc-b.md"):
+        upload = await client.post(
+            "/knowledge/upload",
+            headers=headers,
+            files={"file": (name, f"content of {name}".encode("utf-8"), "text/markdown")},
+        )
+        assert upload.status_code == 202
+
+    response = await client.post("/knowledge/reindex-all", headers=headers)
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["queued_count"] == 2
+    assert body["skipped"] == []
+
+    listed = await client.get("/knowledge/documents", headers=headers)
+    assert listed.status_code == 200
+    for doc in listed.json()["documents"]:
+        assert doc["status"] == "indexed"
+        assert doc["chunk_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_skips_missing_source(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    upload_dir = tmp_path / "uploads"
+    monkeypatch.setattr(get_settings(), "upload_dir", str(upload_dir))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    upload = await client.post(
+        "/knowledge/upload",
+        headers=headers,
+        files={"file": ("missing.md", b"will disappear", "text/markdown")},
+    )
+    assert upload.status_code == 202
+    doc_id = upload.json()["document_id"]
+
+    for file_path in upload_dir.iterdir():
+        file_path.unlink()
+
+    response = await client.post("/knowledge/reindex-all", headers=headers)
+    assert response.status_code == 202
+    body = response.json()
+    assert body["queued_count"] == 0
+    assert len(body["skipped"]) == 1
+    assert body["skipped"][0]["document_id"] == doc_id
+    assert body["skipped"][0]["title"] == "missing.md"
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_requires_permission(client: AsyncClient, mock_dashscope_client):
+    await bootstrap_admin(client)
+    registered = await client.post(
+        "/auth/register",
+        json={"username": "no_reindex_all", "password": "Demo@123456"},
+    )
+    token = registered.json()["access_token"]
+    response = await client.post("/knowledge/reindex-all", headers=auth_headers(token))
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_rate_limit(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+    tight_limit = RateLimitRule(max_requests=2, window_seconds=60)
+
+    with (
+        patch("app.api.knowledge.REINDEX_ALL_RATE", tight_limit),
+        patch("app.api.knowledge.enforce_rate_limit", lambda *_a, **_k: None),
+    ):
+        first = await client.post("/knowledge/reindex-all", headers=headers)
+        second = await client.post("/knowledge/reindex-all", headers=headers)
+        third = await client.post("/knowledge/reindex-all", headers=headers)
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert third.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_skips_pending(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    with patch("app.api.knowledge._ingest_upload_background", new=AsyncMock()):
+        upload = await client.post(
+            "/knowledge/upload",
+            headers=headers,
+            files={"file": ("pending.md", b"still ingesting", "text/markdown")},
+        )
+    assert upload.status_code == 202
+    doc_id = upload.json()["document_id"]
+
+    response = await client.post("/knowledge/reindex-all", headers=headers)
+    assert response.status_code == 202
+    body = response.json()
+    assert body["queued_count"] == 0
+    assert len(body["skipped"]) == 1
+    assert body["skipped"][0]["document_id"] == doc_id
+    assert body["skipped"][0]["reason"] == "文档正在入库，请稍后再试。"
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_rejects_when_bulk_running(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    upload = await client.post(
+        "/knowledge/upload",
+        headers=headers,
+        files={"file": ("indexed.md", b"ready to reindex", "text/markdown")},
+    )
+    assert upload.status_code == 202
+
+    await knowledge_api._reindex_all_lock.acquire()
+    try:
+        response = await client.post("/knowledge/reindex-all", headers=headers)
+        assert response.status_code == 409
+        assert "正在进行中" in response.json()["detail"]
+    finally:
+        knowledge_api._reindex_all_lock.release()
+
+
+async def _set_document_status(document_id, status: str) -> None:
+    async with knowledge_api.AsyncSessionLocal() as db:
+        doc = await db.get(KnowledgeDocument, document_id)
+        assert doc is not None
+        doc.status = status
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_skips_reindexing(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    upload = await client.post(
+        "/knowledge/upload",
+        headers=headers,
+        files={"file": ("busy.md", b"already reindexing", "text/markdown")},
+    )
+    assert upload.status_code == 202
+    doc_id = upload.json()["document_id"]
+    await _set_document_status(doc_id, "reindexing")
+
+    response = await client.post("/knowledge/reindex-all", headers=headers)
+    assert response.status_code == 202
+    body = response.json()
+    assert body["queued_count"] == 0
+    assert len(body["skipped"]) == 1
+    assert body["skipped"][0]["document_id"] == doc_id
+    assert body["skipped"][0]["reason"] == "文档正在重建索引。"
+
+
+@pytest.mark.asyncio
+async def test_reindex_all_queues_failed(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    upload = await client.post(
+        "/knowledge/upload",
+        headers=headers,
+        files={"file": ("failed.md", b"retry reindex", "text/markdown")},
+    )
+    assert upload.status_code == 202
+    doc_id = upload.json()["document_id"]
+    await _set_document_status(doc_id, "failed")
+
+    response = await client.post("/knowledge/reindex-all", headers=headers)
+    assert response.status_code == 202
+    body = response.json()
+    assert body["queued_count"] == 1
+    assert body["skipped"] == []
+
+    listed = await client.get("/knowledge/documents", headers=headers)
+    doc = next(item for item in listed.json()["documents"] if item["id"] == doc_id)
+    assert doc["status"] == "indexed"
+    assert doc["chunk_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_reindex_document_rejects_reindexing(client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    upload = await client.post(
+        "/knowledge/upload",
+        headers=headers,
+        files={"file": ("single-busy.md", b"content", "text/markdown")},
+    )
+    assert upload.status_code == 202
+    doc_id = upload.json()["document_id"]
+    await _set_document_status(doc_id, "reindexing")
+
+    response = await client.post(f"/knowledge/documents/{doc_id}/reindex", headers=headers)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "文档正在重建索引。"
+
+
+@pytest.mark.asyncio
+async def test_reindex_document_rejects_when_bulk_running(
+    client: AsyncClient, mock_dashscope_client, tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(get_settings(), "upload_dir", str(tmp_path / "uploads"))
+    kb = await create_kb_editor(client)
+    headers = auth_headers(kb["access_token"])
+
+    upload = await client.post(
+        "/knowledge/upload",
+        headers=headers,
+        files={"file": ("blocked-single.md", b"content", "text/markdown")},
+    )
+    assert upload.status_code == 202
+    doc_id = upload.json()["document_id"]
+
+    await knowledge_api._reindex_all_lock.acquire()
+    try:
+        response = await client.post(f"/knowledge/documents/{doc_id}/reindex", headers=headers)
+        assert response.status_code == 409
+        assert "正在进行中" in response.json()["detail"]
+    finally:
+        knowledge_api._reindex_all_lock.release()

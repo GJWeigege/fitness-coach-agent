@@ -16,6 +16,17 @@ export type KnowledgeDocument = {
   chunk_count: number;
 };
 
+export type KnowledgeReindexSkippedItem = {
+  document_id: string;
+  title: string;
+  reason: string;
+};
+
+export type KnowledgeReindexAllResponse = {
+  queued_count: number;
+  skipped: KnowledgeReindexSkippedItem[];
+};
+
 export type SessionSummary = {
   id: string;
   user_id: string | null;
@@ -30,6 +41,10 @@ export type Citation = {
   chunk_index: number;
   content: string;
   score: number;
+  rerank_score?: number;
+  vector_score?: number;
+  keyword_hit?: boolean;
+  source?: string;
 };
 
 export type AgentStepEvent = {

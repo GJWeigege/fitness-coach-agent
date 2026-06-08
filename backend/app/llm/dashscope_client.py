@@ -151,6 +151,74 @@ class DashScopeClient:
             vectors.extend(item["embedding"] for item in ordered)
         return vectors
 
+    async def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        top_n: int | None = None,
+    ) -> list[dict]:
+        if not documents:
+            return []
+
+        payload = {
+            "model": self.settings.coach_rerank_model,
+            "input": {"query": query, "documents": documents},
+            "parameters": {
+                "return_documents": False,
+                "top_n": top_n or len(documents),
+            },
+        }
+        response = await self._request_with_retry_on_url(
+            self.settings.dashscope_rerank_url,
+            json=payload,
+        )
+        body = response.json()
+        raw_results = body.get("output", {}).get("results")
+        if raw_results is None:
+            raw_results = body.get("results") or []
+
+        ranked: list[dict] = []
+        for item in raw_results:
+            index = int(item["index"])
+            if index < 0 or index >= len(documents):
+                continue
+            ranked.append(
+                {
+                    "index": index,
+                    "relevance_score": float(item["relevance_score"]),
+                }
+            )
+        ranked.sort(key=lambda item: item["relevance_score"], reverse=True)
+        return ranked
+
+    async def _request_with_retry_on_url(
+        self,
+        url: str,
+        *,
+        json: dict | None = None,
+    ) -> httpx.Response:
+        max_attempts = 1 + self.settings.llm_max_retries
+        last_error: Exception | None = None
+        headers = {
+            "Authorization": f"Bearer {self.settings.dashscope_api_key}",
+            "Content-Type": "application/json",
+        }
+        for attempt in range(max_attempts):
+            try:
+                response = await self._client.post(url, json=json, headers=headers)
+                if response.status_code in _RETRYABLE_STATUS and attempt < max_attempts - 1:
+                    continue
+                response.raise_for_status()
+                return response
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                last_error = exc
+                if attempt >= max_attempts - 1:
+                    raise
+        if last_error:
+            raise last_error
+        raise RuntimeError("Rerank request failed without a response")
+
     async def chat_stream(self, messages: list[dict], *, model: str | None = None):
         async for item in self._stream_internal(messages, model=model, tools=None):
             yield item

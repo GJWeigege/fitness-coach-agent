@@ -27,6 +27,28 @@ BENCHMARK_DATASET_DIR = Path(__file__).resolve().parents[2] / "data" / "benchmar
 DISCLAIMER_MARKERS = ("仅供参考", COACH_DISCLAIMER[:12])
 REQUIRED_SAMPLE_FIELDS = frozenset({"id", "question", "expected_intent"})
 
+# Benchmark failure reason codes (also referenced by frontend formatFailureReason).
+FR_INTENT_MISMATCH = "intent_mismatch"
+FR_MISSING_CITATION = "missing_citation"
+FR_MISSING_DISCLAIMER = "missing_disclaimer"
+FR_BANNED_DIAGNOSIS = "banned_diagnosis"
+FR_MISSING_SAFETY_REVIEW = "missing_safety_review"
+FR_UNFAITHFUL_ANSWER = "unfaithful_answer"
+FR_RUN_ERROR = "run_error"
+FR_MISSING_TOOLS_PREFIX = "missing_tools:"
+FR_PLAN_AGENTS_MISMATCH_PREFIX = "plan_agents_mismatch:"
+
+
+def missing_tools_reason(missing: list[str]) -> str:
+    return f"{FR_MISSING_TOOLS_PREFIX}{','.join(missing)}"
+
+
+def plan_agents_mismatch_reason(*, expected: list[str], actual: list[str]) -> str:
+    return (
+        f"{FR_PLAN_AGENTS_MISMATCH_PREFIX}"
+        f"expected={','.join(expected)},actual={','.join(actual)}"
+    )
+
 
 @dataclass
 class BenchmarkSample:
@@ -214,6 +236,54 @@ def compute_safety_compliance(
     return has_disclaimer and no_banned and safety_ok
 
 
+def collect_failure_reasons(
+    sample: BenchmarkSample,
+    *,
+    predicted_intent: str | None,
+    citations: list,
+    steps: list[AgentStep],
+    reply: str,
+    guardrails: CoachGuardrails | None = None,
+    faithfulness: bool | None = None,
+) -> list[str]:
+    reasons: list[str] = []
+    plan_agents = extract_plan_agents(steps)
+    tool_names = extract_tool_names(steps)
+
+    if predicted_intent != sample.expected_intent:
+        reasons.append(FR_INTENT_MISMATCH)
+
+    if sample.must_cite and len(citations) == 0:
+        reasons.append(FR_MISSING_CITATION)
+
+    if sample.must_include_tools:
+        required = set(sample.must_include_tools)
+        if not required.issubset(tool_names):
+            missing = sorted(required - tool_names)
+            reasons.append(missing_tools_reason(missing))
+
+    if sample.expected_plan_agents:
+        recall = compute_plan_agent_recall(sample.expected_plan_agents, plan_agents)
+        if recall is None or recall < 1.0:
+            expected = sorted(set(sample.expected_plan_agents))
+            actual = sorted(plan_agents)
+            reasons.append(plan_agents_mismatch_reason(expected=expected, actual=actual))
+
+    if sample.must_include_disclaimer:
+        g = guardrails or CoachGuardrails()
+        if not reply_has_disclaimer(reply):
+            reasons.append(FR_MISSING_DISCLAIMER)
+        elif g.contains_banned_diagnosis(reply):
+            reasons.append(FR_BANNED_DIAGNOSIS)
+        elif predicted_intent != "safety" and not has_safety_review_step(steps):
+            reasons.append(FR_MISSING_SAFETY_REVIEW)
+
+    if faithfulness is False:
+        reasons.append(FR_UNFAITHFUL_ANSWER)
+
+    return reasons
+
+
 def evaluate_sample_outcome(
     sample: BenchmarkSample,
     *,
@@ -261,6 +331,16 @@ def evaluate_sample_outcome(
     if faithfulness is not None:
         checks.append(faithfulness)
 
+    failure_reasons = collect_failure_reasons(
+        sample,
+        predicted_intent=predicted_intent,
+        citations=citations,
+        steps=steps,
+        reply=reply,
+        guardrails=guardrails,
+        faithfulness=faithfulness,
+    )
+
     metrics = {
         "intent_match": intent_match,
         "plan_agent_recall": plan_recall,
@@ -275,6 +355,7 @@ def evaluate_sample_outcome(
         "latency_ms": latency_ms,
         "plan_agents": sorted(plan_agents),
         "tool_names": sorted(tool_names),
+        "failure_reasons": failure_reasons,
     }
 
     return RunEvaluation(
@@ -452,7 +533,7 @@ class BenchmarkRunner:
                 faithfulness=None,
                 faithfulness_score=None,
                 passed=False,
-                metrics={"error": True},
+                metrics={"error": True, "failure_reasons": [FR_RUN_ERROR]},
             )
 
         run_id = result["run_id"]

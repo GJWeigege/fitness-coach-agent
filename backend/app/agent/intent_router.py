@@ -23,11 +23,22 @@ INTENT_ACTIVE_AGENTS: dict[str, list[str]] = {
 }
 
 CHITCHAT_KEYWORDS = ("你好", "谢谢", "再见", "嗨", "hello", "hi", "早上好", "晚安")
-SAFETY_KEYWORDS = (
-    "疼痛",
+# Multi-char injury / symptom terms shared by safety keyword routing and injury heuristics.
+INJURY_SUBSTRING_TERMS = (
     "受伤",
+    "受过伤",
+    "损伤",
+    "疼痛",
+    "不适",
+    "弹响",
+    "撕裂",
+    "骨折",
+    "肩袖",
+    "ACL",
     "胸闷",
     "气短",
+)
+SAFETY_ADMIN_KEYWORDS = (
     "就医",
     "医院",
     "禁忌",
@@ -35,8 +46,18 @@ SAFETY_KEYWORDS = (
     "能不能做",
     "可以做吗",
     "诊断",
-    "骨折",
-    "撕裂",
+)
+SAFETY_KEYWORDS = INJURY_SUBSTRING_TERMS + SAFETY_ADMIN_KEYWORDS
+# Single-char 疼/痛: exclude compounds like 疼爱、痛快、以及否定 不痛.
+_SINGLE_CHAR_PAIN_RE = re.compile(r"(?<![爱不])疼(?![爱快])|(?<!不)痛(?![快])")
+EXERCISE_PERMISSION_KEYWORDS = (
+    "还能",
+    "能不能",
+    "可以做",
+    "能否",
+    "可以吗",
+    "是不是",
+    "动作错了",
 )
 RECOVERY_KEYWORDS = ("恢复", "恢复期", "康复", "deload", "减载")
 TRAINING_KEYWORDS = ("训练", "深蹲", "硬拉", "卧推", "周期", "组数", "动作", "有氧", "力量")
@@ -48,6 +69,12 @@ _ROUTER_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "coac
 
 def load_router_prompt() -> str:
     return _ROUTER_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def has_injury_indicator(text: str) -> bool:
+    if any(term in text for term in INJURY_SUBSTRING_TERMS):
+        return True
+    return bool(_SINGLE_CHAR_PAIN_RE.search(text))
 
 
 class CoachIntentRouter:
@@ -91,9 +118,21 @@ class CoachIntentRouter:
 
         return self._result("unknown", 0.5, "默认")
 
+    def _injury_safety_route(self, text: str) -> dict | None:
+        if not has_injury_indicator(text):
+            return None
+        has_training = any(k in text for k in TRAINING_KEYWORDS)
+        asks_permission = any(k in text for k in EXERCISE_PERMISSION_KEYWORDS)
+        if has_training or asks_permission:
+            return self._result("safety", 0.88, "伤病/疼痛与动作咨询")
+        return self._result("safety", 0.85, "伤病/疼痛关键词")
+
     def _keyword_route(self, text: str) -> dict | None:
         if any(k in text for k in SAFETY_KEYWORDS):
             return self._result("safety", 0.85, "安全/伤病关键词")
+        injury = self._injury_safety_route(text)
+        if injury:
+            return injury
         if any(k in text for k in RECOVERY_KEYWORDS) and (
             any(k in text for k in TRAINING_KEYWORDS) or any(k in text for k in NUTRITION_KEYWORDS)
         ):

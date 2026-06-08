@@ -1,8 +1,10 @@
-import type { LocalMessage } from "../../types";
+import type { Citation, LocalMessage } from "../../types";
 import { BotIcon, UserIcon } from "../ui/Icons";
 import { Badge } from "../ui/Badge";
 import { AgentStepsPanel } from "./AgentStepsPanel";
 import { MarkdownContent } from "./MarkdownContent";
+
+const CITATION_PREVIEW_LEN = 200;
 
 const roleLabels: Record<string, string> = {
   user: "用户",
@@ -25,6 +27,44 @@ type MessageBubbleProps = {
   canFeedback?: boolean;
   onFeedback?: (messageId: string, rating: "up" | "down") => void;
 };
+
+function citationSourceLabel(item: Citation): string | null {
+  if (item.source === "hybrid" || (item.keyword_hit && (item.vector_score ?? 0) > 0)) {
+    return "混合";
+  }
+  if (item.keyword_hit) {
+    return "关键词";
+  }
+  if (item.source === "vector") {
+    return "向量";
+  }
+  return null;
+}
+
+function CitationItem({ item }: { item: Citation }) {
+  const displayScore = item.rerank_score ?? item.vector_score ?? item.score;
+  const sourceLabel = citationSourceLabel(item);
+  const isLong = item.content.length > CITATION_PREVIEW_LEN;
+  const preview = isLong ? `${item.content.slice(0, CITATION_PREVIEW_LEN)}…` : item.content;
+
+  return (
+    <li>
+      <span className="citation-score">[{displayScore.toFixed(3)}]</span>
+      {sourceLabel ? <span className="citation-source">{sourceLabel}</span> : null}
+      {isLong ? (
+        <>
+          <span>{preview}</span>
+          <details className="citation-expand">
+            <summary>展开全文</summary>
+            {item.content}
+          </details>
+        </>
+      ) : (
+        item.content
+      )}
+    </li>
+  );
+}
 
 export function MessageBubble({ message, canFeedback, onFeedback }: MessageBubbleProps) {
   const isUser = message.role === "user";
@@ -63,10 +103,7 @@ export function MessageBubble({ message, canFeedback, onFeedback }: MessageBubbl
             <summary>引用知识片段（{message.citations.length}）</summary>
             <ul>
               {message.citations.map((item) => (
-                <li key={item.chunk_id}>
-                  <span className="citation-score">[{item.score.toFixed(2)}]</span>
-                  {item.content}
-                </li>
+                <CitationItem key={item.chunk_id} item={item} />
               ))}
             </ul>
           </details>
