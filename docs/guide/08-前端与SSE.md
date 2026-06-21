@@ -160,7 +160,27 @@ export type StreamEvent = {
 
 **面试话术**：`replace` 是 **idempotent 全量快照**，适合护栏改写；`delta` 仅用于多 agent LLM 合并的流式体验，避免中途 replace 打断 UX。
 
-### 3.3 事件处理总表
+### 3.3 单轮 SSE 事件顺序（典型 recovery）
+
+```text
+run
+step(routing)
+step(planning)
+step(training_agent)     ─┐ 并行时顺序不保证
+step(nutrition_agent)    ─┘
+tool_call / tool_result  （各 agent 内，可选）
+step(safety_review)
+step(synthesizing)
+delta × N                  （多 agent 合并）
+replace                    （apply_guardrails 若改写）
+session(citations)
+[result 被 ChatService 吞掉]
+done                       （assistant 已入库）
+```
+
+**前端注意**：`replace` 可能在 `delta` 之后再次到达（guardrails）；`useSessions` 用赋值覆盖，最终展示以 **最后一次 replace** 或 **delta 累积 + 末次 replace** 为准。流结束后 `loadSessionMessages` 以 DB 为权威，消除 SSE 与持久化不一致。
+
+### 3.4 事件处理总表
 
 | type | 更新字段 | 说明 |
 |------|----------|------|
@@ -168,7 +188,7 @@ export type StreamEvent = {
 | `session` | `activeSessionId`, `citations` | 新会话或 citations 快照 |
 | `step` | `steps[]`, `intent` | routing 阶段写 intent |
 | `tool_call` | `steps[]` | 追加 phase=tool_call |
-| `tool_result` | `steps[]`, `citations` | 可能带 citations |
+| `tool_result` | `steps[]` | 追加 phase=tool_result（citations 主要由 `session` 事件携带） |
 | `delta` / `replace` | `content` | 正文 |
 | `done` | `id`, `runStatus`, `agent_trace_summary` | 替换临时 ID 为 DB id |
 | `error` | — | `setError(message)` |

@@ -2,7 +2,8 @@
 
 > **目标读者**：想深入学习本项目、准备面试、或 onboarding 的开发者  
 > **语言**：中文为主；README Quick Start 为英文  
-> **最后对齐代码**：仓库 `backend/app/` + `frontend/src/`（2026-06-06）
+> **最后对齐代码**：仓库 `backend/app/` + `frontend/src/`（2026-06-21）  
+> **深度章节**：guide/04 §2.1 Send 并行、§4.4 SSE 桥；guide/05 §6 Graph-RAG；guide/06 §8 记忆示例；reference/LLM_ARCHITECTURE 检索理论
 
 ---
 
@@ -36,9 +37,9 @@
 | 01 | [项目概览与边界](guide/01-项目概览与边界.md) | 定位、边界、仓库结构 |
 | 02 | [技术栈全解](guide/02-技术栈全解.md) | 选型与替代方案 |
 | 03 | [系统架构与分层](guide/03-系统架构与分层.md) | 前后端分层、数据模型 |
-| 04 | [Agent编排深度解析](guide/04-Agent编排深度解析.md) | **LangGraph 全图、并行 Send** |
-| 05 | [RAG与Graph-RAG](guide/05-RAG与Graph-RAG.md) | **混合检索、入库流水线** |
-| 06 | [记忆与长上下文](guide/06-记忆与长上下文.md) | summary vs full |
+| 04 | [Agent编排深度解析](guide/04-Agent编排深度解析.md) | **LangGraph 全图、Send 并行、ReAct、SSE 桥** |
+| 05 | [RAG与Graph-RAG](guide/05-RAG与Graph-RAG.md) | **混合检索、MMR、Graph linking** |
+| 06 | [记忆与长上下文](guide/06-记忆与长上下文.md) | summary vs full、15 轮示例 |
 | 07 | [工具系统详解](guide/07-工具系统详解.md) | 7 工具逐一 |
 | 08 | [前端与SSE](guide/08-前端与SSE.md) | replace/delta 契约 |
 | 09 | [评测与观测](guide/09-评测与观测.md) | benchmark、timeline |
@@ -63,7 +64,7 @@
 | **reference/** | 契约/速查：SSE、配置、验收、HA | 开发时查阅 |
 | **decisions/** | ADR 关键决策及原因 | 回答「为什么这样设计」 |
 | **interview/** | 口述稿、FAQ、一页纸速查 | 面试前 1–2 天 |
-| **specs/** | 原始设计规格与任务清单 | 对照验收、查 § 节号 |
+| **specs/** | 原始设计规格与任务清单 | 对照验收、查 § 节号；**运行时默认值以 `backend/app/core/config.py` 为准** |
 
 ---
 

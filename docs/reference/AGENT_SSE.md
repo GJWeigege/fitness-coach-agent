@@ -55,13 +55,14 @@ sub_agent / coach_chitchat **不向客户端推送正文**（无 `delta`/`replac
 | `synthesize` | phase=`synthesizing` |
 | `load_profile`, `dispatch_sub_agents`, `apply_guardrails`, `persist_turn`, `knowledge_prefetch` | **不发 step** |
 
-## ChatService 六步契约（§3.5）
+## ChatService 七步契约（§3.5）
 
 1. persist user + `increment_turn_count` + commit  
 2. `stream_turn` → 转发 SSE（不含 `done`）；吞掉 `type=result`  
-3. persist assistant（来自 `CoachRunResult.final_answer`）+ commit  
-4. `maybe_update_summary`；可选 yield `step` phase=`memory_summary`  
-5. `finalize_run(...)`  
-6. yield `done`
+3. `maybe_update_summary`（older 对；**早于** assistant 入库）  
+4. persist assistant（来自 `CoachRunResult.final_answer`）+ commit  
+5. 可选 yield `step` phase=`memory_summary`  
+6. `finalize_run(...)`  
+7. yield `done`
 
 `/chat/send`：聚合正文 — 有 `replace` 取最后一次 `replace.content`，否则拼接全部 `delta`；入库仍以 `type=result` 为准。

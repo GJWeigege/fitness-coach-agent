@@ -86,11 +86,11 @@ intent=chitchat；或 unknown 经 knowledge_prefetch；或无有效 plan tasks�
 
 ### B10 recovery 场景？
 
-并行失败或 degraded 时走 serial_dispatch 或 synthesize 合并部分 outputs。
+`route_intent` → recovery，`active_agents=[training,nutrition]`；planner/fallback 产出同 `parallel_group`（如 0）的双 task → `Send×2` 并行 sub_agent → synthesize LLM 合并。`PARALLEL_SUB_AGENTS_ENABLED=false` 时改 `serial_dispatch`。
 
 ### B11 serial_dispatch 是什么？
 
-关闭并行或多 task 需串行时，循环调用 sub_agent_node 手动 merge。
+`PARALLEL_SUB_AGENTS_ENABLED=false` 且 tasks>1 时，顺序调用 `sub_agent_node` 并手动 merge outputs/tools/cot。
 
 ### B12 safety_review 和 synthesize 顺序？
 
@@ -141,7 +141,7 @@ vector cosine + keyword ILIKE → RRF(k=60) → threshold → top_k。
 **Q**: 为什么不用纯向量？  
 **A**: 中文术语 keyword 更稳。  
 **↳ Q**: RRF 公式？  
-**A**: score(d)=Σ 1/(60+rank_i(d))。  
+**A**: score(d)=Σ 1/(60+rank+1)，rank 为 0-based。  
 **↳ Q**: 怎么调 threshold？  
 **A**: benchmark faithfulness vs 噪声 citation 率。
 
@@ -153,9 +153,9 @@ vector cosine + keyword ILIKE → RRF(k=60) → threshold → top_k。
 
 MVP 经验值 + benchmark 调优；过低噪声多，过高漏召回。
 
-### C6 chunk 800 依据？
+### C6 chunk 400/60 依据？
 
-段落语义完整性与 embedding 效果平衡；overlap 120 防断句。
+Markdown 优先按 `##` 小节；超长节内二次切分默认 400 字、重叠 60；改参数需 reindex。
 
 ### C7 embedding 1024 维？
 
@@ -203,7 +203,7 @@ summary：8 轮+摘要，qwen-plus；full：qwen-long 全 history。faithfulness
 
 ### D3 摘要何时触发？
 
-turn_count ≥ 12 且 assistant 已入库后 maybe_update_summary。
+`turn_count > 12` 且存在 older 对（超出最近 8 轮）；在 `_complete_turn_events` 里 **assistant 入库之前** 调用 `maybe_update_summary`。
 
 ### D4 MEMORY_MAX_TURNS=8？
 
@@ -231,12 +231,12 @@ plus 默认 chat；long 用于 full memory 模式，成本更高。
 
 ### E1 ★ 用户发消息全链路？
 
-见 guide/03 六步 + guide/04 时序。
+见 guide/03 七步 + guide/04 时序。
 
 **追问链样例**：
 
 **Q**: 全链路？  
-**A**: 存 user → stream_turn SSE → 存 assistant → summary → finalize → done。  
+**A**: 存 user → stream_turn SSE → summary（older）→ 存 assistant → finalize → done。  
 **↳ Q**: 为何 graph 后存 assistant？  
 **A**: final_answer 来自 CoachRunResult。  
 **↳ Q**: done 谁发？  

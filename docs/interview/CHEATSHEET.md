@@ -7,8 +7,8 @@
 | Coach 工具数 | **7** |
 | Benchmark 样本 | **81** 条（`coach_eval.jsonl`，验收 ≥80） |
 | Embedding 维度 | **1024** |
-| Chunk size / overlap | **800 / 120** |
-| RAG Top-K / threshold | **4 / 0.35** |
+| Chunk size / overlap | **400 / 60**（节内二次切分；Markdown 优先 `##` 小节） |
+| RAG Top-K / threshold | **3 / 0.35** |
 | Memory 窗口 / token 顶 | **8 turns / 12000** |
 | sub_agent 最大 tool 步 | **4** |
 | 每轮最大 sub_agent | **2** |
@@ -21,7 +21,7 @@
 
 | 概念 | 文件 |
 |------|------|
-| 聊天六步 | `services/chat_service.py` |
+| 聊天七步 | `services/chat_service.py` |
 | LangGraph 图 | `agent/coach/graph.py` |
 | 并行 Send | `nodes/dispatch_sub_agents.py` |
 | Hybrid RAG | `services/rag_service.py` |

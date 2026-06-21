@@ -33,8 +33,8 @@
 
 1. 存 user + commit  
 2. `orchestrator.stream_turn` 转发 SSE，吞 `result`  
-3. 存 assistant  
-4. `maybe_update_summary`  
+3. `maybe_update_summary`（older 对）  
+4. 存 assistant + commit  
 5. `finalize_run`  
 6. `done`  
 
@@ -52,10 +52,10 @@
 
 ## Part 3 — RAG 深讲（3 min）
 
-1. ingest：800/120 chunk，1024 维 embedding  
-2. retrieve：vector + keyword → RRF k=60 → threshold 0.35  
+1. ingest：Markdown `##` 分块 + 节内 400/60，1024 维 embedding  
+2. retrieve：vector + keyword → RRF k=60 → rerank → MMR → guard  
 3. citation 写入 `chat_messages.retrieved_chunks`  
-4. Graph：`graph_lookup` 补充关系型 query  
+4. Graph：`prefetch` 写 `graph_context`；sub_agent 可另调 `graph_lookup`  
 
 **对比题**：「为什么不 Milvus？」→ 同库事务、MVP 运维、见 ADR-004/005。
 

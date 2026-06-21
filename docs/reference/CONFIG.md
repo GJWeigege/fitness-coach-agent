@@ -57,10 +57,14 @@
 | 变量 | 默认值 | 说明 | 调优建议 |
 |------|--------|------|----------|
 | `EMBEDDING_DIM` | `1024` | 向量维度 | 与 embedding 模型一致 |
-| `RAG_TOP_K` | `4` | 最终返回 chunk 数 | 增大→更多上下文、更高成本 |
+| `RAG_TOP_K` | `3` | 最终返回 chunk 数 | 增大→更多上下文、更高成本 |
 | `RAG_HYBRID_ENABLED` | `true` | 向量+关键词 RRF | 中文建议保持 true |
-| `RAG_KEYWORD_TOP_K` | `8` | 关键词召回上限 | — |
-| `RAG_SCORE_THRESHOLD` | `0.35` | 最低相关分 | 降低→更多噪声；升高→漏召回 |
+| `RAG_KEYWORD_TOP_K` | `12` | 关键词召回上限 | — |
+| `RAG_VECTOR_CANDIDATE_K` | `20` | 向量候选池 | — |
+| `RAG_VECTOR_SCORE_MIN` | `0.55` | 质量过滤门槛 | — |
+| `RAG_RERANK_ENABLED` | `true` | gte-rerank-v2 精排 | — |
+| `RAG_MMR_ENABLED` | `true` | MMR 多样性 | — |
+| `RAG_SCORE_THRESHOLD` | `0.35` | citation guard 最低相关分 | 降低→更多噪声；升高→漏召回 |
 | `RAG_SCORE_FLOOR` | `0.01` | 分数下限 | — |
 | `RAG_SCORE_MIN_GAP` | `0.004` | 相邻 chunk 最小分差 | — |
 | `USE_RAG_DEFAULT` | `true` | Chat 默认启用 RAG | 前端可 per-request 覆盖 |
@@ -101,8 +105,8 @@
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `INGEST_CHUNK_SIZE` | `800` | 分块大小（字符） |
-| `INGEST_CHUNK_OVERLAP` | `120` | 分块重叠 |
+| `INGEST_CHUNK_SIZE` | `400` | 节内二次切分上限（字符） |
+| `INGEST_CHUNK_OVERLAP` | `60` | 节内切分重叠 |
 | `UPLOAD_DIR` | `backend/data/uploads` | 上传目录 |
 | `MAX_UPLOAD_BYTES` | `10485760` | 10MB 上传限制 |
 

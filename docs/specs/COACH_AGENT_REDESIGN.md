@@ -45,15 +45,17 @@ ChatService.stream_message / send_message
   │       · 转发 run / delta / step / tool_* / session / replace
   │       · 吞掉 type=result（内部结果，不下发客户端）
   │
-  ├─ 3. persist assistant_message（来自 CoachRunResult）+ commit
+  ├─ 3. maybe_update_summary（older 对；**早于** assistant 入库）
+  │       · 可选 SSE step phase=memory_summary（在 assistant commit **之后** yield）
   │
-  ├─ 4. maybe_update_summary（assistant 已入库）
-  │       · 可选 SSE step phase=memory_summary（AGENT_ENABLE_THINKING_STEPS）
+  ├─ 4. persist assistant_message（来自 CoachRunResult）+ commit
   │
   ├─ 5. Orchestrator.finalize_run(assistant_message_id, memory_summary_updated, …)
   │
   └─ 6. yield done（含 run_id, status, latency_ms, model_name）
 ```
+
+> **实现注**：步骤 3–4 顺序以 `chat_service._complete_turn_events` 为准；摘要只压缩 older 窗口，不含本轮 assistant。
 
 ```text
 LangGraph:
@@ -74,9 +76,9 @@ LangGraph:
 | `COACH_ANSWER_MODEL` | `qwen-plus` | sub_agent / synthesize |
 | `COACH_EMBEDDING_MODEL` | `text-embedding-v3` | |
 | `EMBEDDING_DIM` | `1024` | |
-| `RAG_TOP_K` | `4` | |
+| `RAG_TOP_K` | `3` | |
 | `RAG_HYBRID_ENABLED` | `true` | |
-| `RAG_KEYWORD_TOP_K` | `8` | |
+| `RAG_KEYWORD_TOP_K` | `12` | |
 | `RAG_SCORE_THRESHOLD` | `0.35` | |
 | `GRAPH_RAG_ENABLED` | `true` | Graph 补充；RAG 仍为主 |
 | `SUB_AGENT_MAX_TOOL_STEPS` | `4` | |
@@ -98,8 +100,8 @@ LangGraph:
 | `MEMORY_SUMMARY_TRIGGER_TURNS` | `12` | |
 | `MEMORY_SUMMARY_MAX_CHARS` | `500` | |
 | `MEMORY_MAX_USER_CHARS` | `8000` | |
-| `INGEST_CHUNK_SIZE` | `800` | |
-| `INGEST_CHUNK_OVERLAP` | `120` | |
+| `INGEST_CHUNK_SIZE` | `400` | 节内二次切分上限 |
+| `INGEST_CHUNK_OVERLAP` | `60` | 节内切分重叠 |
 | `BENCHMARK_CONCURRENCY` | `2` | |
 | `USE_RAG_DEFAULT` | `true` | Chat 默认 |
 | `UPLOAD_DIR` | `backend/data/uploads` | |
@@ -330,12 +332,13 @@ class CoachGraphOrchestrator:
 |------|------|------|
 | 1 | ChatService | session；user message；**唯一** `increment_turn_count`；commit |
 | 2 | Orchestrator | `create_run`；`stream_turn` → 转发 SSE（**不含 `done`**）；末事件 `type=result` |
-| 3 | ChatService | 插入 assistant（content、`retrieved_chunks`、`agent_run_id`、tokens）；commit |
-| 4 | ChatService | `maybe_update_summary`；记 `memory_summary_updated`；可选 yield `step` memory_summary |
-| 5 | Orchestrator | `finalize_run(...)` |
-| 6 | ChatService | yield `{type:"done", run_id, status, latency_ms, model_name, session_id}` |
+| 3 | ChatService | `maybe_update_summary`（older 对）；记 `memory_summary_updated` |
+| 4 | ChatService | 插入 assistant（content、`retrieved_chunks`、`agent_run_id`、tokens）；commit |
+| 5 | ChatService | 可选 yield `step` phase=`memory_summary`（`AGENT_ENABLE_THINKING_STEPS`） |
+| 6 | Orchestrator | `finalize_run(...)` |
+| 7 | ChatService | yield `{type:"done", run_id, status, latency_ms, model_name, session_id}` |
 
-**`/chat/send`**：消费 `stream_turn` 聚合正文 — 有 `replace` 则取**最后一次** `replace.content`；否则拼接全部 `delta`；步骤 3–6 与流式相同。入库仍以 `type=result` 为准。
+**`/chat/send`**：消费 `stream_turn` 聚合正文 — 有 `replace` 则取**最后一次** `replace.content`；否则拼接全部 `delta`；步骤 3–7 与流式相同。入库仍以 `type=result` 为准。
 
 ### 3.6 SSE 事件
 
@@ -885,7 +888,7 @@ fitness-coach-agent/
 
 | 风险 | 缓解 |
 |------|------|
-| done/DB 时序 | §3.5 六步 + T-075 断言 assistant 先于 done |
+| done/DB 时序 | §3.5 七步 + T-075 断言 assistant 先于 done |
 | turn 重复 | persist_turn no-op；仅步骤 1 increment |
 | Memory 缺失 | build_llm_messages + T-072 测试 |
 | 评测 80 条 | T-090 先 30 |
